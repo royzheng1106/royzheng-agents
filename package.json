@@ -1,0 +1,32 @@
+{
+  "name": "royzheng-agents",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "nodemon --watch src --ext ts --exec \"node --loader ts-node/esm src/index.ts\"",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "keywords": [],
+  "author": "Roy Zheng",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@vercel/functions": "^3.1.3",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "mongodb": "^6.20.0",
+    "node-telegram-bot-api": "^0.66.0"
+  },
+  "devDependencies": {
+    "@libsql/client": "^0.15.15",
+    "@types/express": "^5.0.3",
+    "@types/mongodb": "^4.0.6",
+    "@types/node": "^24.7.1",
+    "@types/uuid": "^10.0.0",
+    "libsql": "^0.5.22",
+    "nodemon": "^3.1.10",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}
