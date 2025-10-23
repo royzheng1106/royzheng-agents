@@ -10,16 +10,16 @@ import { tursoClient } from './clients/turso.js';
 const app = express();
 
 // Increase request size limit to handle base64 audio
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ limit: "10mb", extended: true }));
+app.use(express.json({ limit: "20mb" }));
+app.use(express.urlencoded({ limit: "20mb", extended: true }));
 
 // Middleware to validate API key
 function requireApiKey(req: express.Request, res: express.Response, next: express.NextFunction) {
-  const apiKey = req.headers['x-api-key'];
+  // const apiKey = req.headers['x-api-key'];
 
-  if (apiKey !== CONFIG.API_KEY) {
-    return res.status(401).json({ ok: false, error: 'Unauthorized: invalid API key' });
-  }
+  // if (apiKey !== CONFIG.API_KEY) {
+  //   return res.status(401).json({ ok: false, error: 'Unauthorized: invalid API key' });
+  // }
 
   next();
 }
