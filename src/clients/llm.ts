@@ -20,7 +20,7 @@ export class LLMClient {
   private apiKey: string;
 
   constructor(
-    baseUrl = "https://royzheng-llm.vercel.app",
+    baseUrl = "https://royzheng-llm.hf.space",
     apiKey: string = CONFIG.LLM_API_KEY!
   ) {
     this.baseUrl = baseUrl;
@@ -54,7 +54,7 @@ export class LLMClient {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": this.apiKey,
+        "Authorization": "Bearer " + this.apiKey,
       },
       body: JSON.stringify(payload),
     });
@@ -98,7 +98,7 @@ export class LLMClient {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": this.apiKey
+        "Authorization": "Bearer " + this.apiKey,
       },
       body: JSON.stringify(payload)
     });
