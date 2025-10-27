@@ -5,7 +5,7 @@ const router = Router();
 
 /** Agent interface */
 interface Agent {
-    agentId: string;
+    agent_id: string;
     name: string;
     systemPrompt: string;
     model: string;
@@ -20,7 +20,7 @@ router.get("/", async (req, res) => {
         const { id } = req.query;
 
         if (id) {
-            const agent = await db.collection<Agent>("agent_config").findOne({ agentId: id.toString() });
+            const agent = await db.collection<Agent>("agent_config").findOne({ agent_id: id.toString() });
             if (!agent) return res.status(404).json({ ok: false, error: "Agent not found" });
             return res.json({ ok: true, agent });
         }
@@ -39,7 +39,7 @@ router.post("/", async (req, res) => {
         const db = await getDb();
         const payload: Agent = req.body;
 
-        const requiredFields: (keyof Agent)[] = ["agentId", "name", "systemPrompt", "model"];
+        const requiredFields: (keyof Agent)[] = ["agent_id", "name", "systemPrompt", "model"];
         for (const field of requiredFields) {
             if (!payload[field]) {
                 return res.status(400).json({ ok: false, error: `Missing required field: ${field}` });
@@ -50,25 +50,25 @@ router.post("/", async (req, res) => {
         res.status(201).json({ ok: true, agent: payload });
     } catch (err: any) {
         if (err.code === 11000) {
-            return res.status(409).json({ ok: false, error: 'Agent with this agentId already exists' });
+            return res.status(409).json({ ok: false, error: 'Agent with this agent_id already exists' });
         }
         res.status(500).json({ ok: false, error: err.message });
     }
 });
 
-// PATCH update an agent by agentId
+// PATCH update an agent by agent_id
 router.patch("/", async (req, res) => {
   try {
     const db = await getDb();
-    const { agentId, ...updates } = req.body as Partial<Agent> & { agentId: string };
+    const { agent_id, ...updates } = req.body as Partial<Agent> & { agent_id: string };
 
-    if (!agentId) return res.status(400).json({ ok: false, error: "Missing agentId" });
+    if (!agent_id) return res.status(400).json({ ok: false, error: "Missing agent_id" });
 
-    // Prevent changing agentId
-    if ("agentId" in updates) delete updates.agentId;
+    // Prevent changing agent_id
+    if ("agent_id" in updates) delete updates.agent_id;
 
     // Only allow updating certain fields
-    const allowedFields: (keyof Agent)[] = ["name", "systemPrompt", "model", "mcpServers"];
+    const allowedFields: (keyof Agent)[] = ["name", "description", "gemini_voice", "system_prompt", "model", "mcp_servers"];
     const sanitizedUpdates: Partial<Agent> = {};
     for (const field of allowedFields) {
       if (field in updates) sanitizedUpdates[field] = updates[field];
@@ -77,7 +77,7 @@ router.patch("/", async (req, res) => {
     const result = await db
       .collection<Agent>("agent_config")
       .findOneAndUpdate(
-        { agentId },
+        { agent_id },
         { $set: sanitizedUpdates },
         { returnDocument: "after" }
       );

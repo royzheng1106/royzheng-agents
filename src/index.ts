@@ -10,19 +10,35 @@ import { tursoClient } from './clients/turso.js';
 const app = express();
 
 // Increase request size limit to handle base64 audio
-app.use(express.json({ limit: "20mb" }));
-app.use(express.urlencoded({ limit: "20mb", extended: true }));
+app.use(express.json({ limit: "5mb" }));
+app.use(express.urlencoded({ limit: "5mb", extended: true }));
+
 
 // Middleware to validate API key
 function requireApiKey(req: express.Request, res: express.Response, next: express.NextFunction) {
-  // const apiKey = req.headers['x-api-key'];
+  // Normalize x-api-key
+  let apiKey = Array.isArray(req.headers['x-api-key'])
+    ? req.headers['x-api-key'][0]
+    : req.headers['x-api-key'];
 
-  // if (apiKey !== CONFIG.API_KEY) {
-  //   return res.status(401).json({ ok: false, error: 'Unauthorized: invalid API key' });
-  // }
+  // If not present, check Authorization header
+  if (!apiKey) {
+    let authHeader = Array.isArray(req.headers['authorization'])
+      ? req.headers['authorization'][0]
+      : req.headers['authorization'];
+
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      apiKey = authHeader.substring(7); // strip 'Bearer '
+    }
+  }
+
+  if (apiKey !== CONFIG.API_KEY) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized: invalid API key' });
+  }
 
   next();
 }
+
 
 
 // Health check
@@ -38,25 +54,26 @@ const orchestrator = new Orchestrator(agentFactory);
  * - Each recipient must have valid fields depending on channel
  */
 function validateEvent(event: Event): string | null {
-  if (!event?.id || !event?.sender.source || !event?.timestamp || !event?.messages) {
-    return 'Invalid Event: missing id, source, timestamp, or payload';
+  if (!event?.id || !event?.sender?.source || !event?.timestamp || !event?.messages) {
+    return 'Invalid Event: missing id, source, timestamp, or messages';
   }
 
-  if (!event.recipients.length) {
-    return 'Event must include at least one recipient';
-  }
+  if (event.recipients?.length) {
+    for (const r of event.recipients) {
+      if (!r.channel) return 'Recipient missing channel';
 
-  for (const r of event.recipients) {
-    if (!r.channel) return 'Recipient missing channel';
-    if (r.channel === 'telegram') {
-      if (!r.chatId) return 'Telegram recipient must have chatId';
-    } else if (!r.id) {
-      return `Recipient for channel "${r.channel}" must have id`;
+      if (r.channel === 'telegram') {
+        if (!r.chat_id) return 'Telegram recipient must have chat_id';
+      } else if (!r.id) {
+        return `Recipient for channel "${r.channel}" must have id`;
+      }
     }
   }
 
+  // No recipients is okay if you handle raw Response
   return null;
 }
+
 
 /**
  * Main events endpoint
@@ -72,11 +89,21 @@ app.post('/api/events', requireApiKey, async (req, res) => {
   console.log(`📩 Received event: ${JSON.stringify(event)}`);
 
   try {
-    await orchestrator.handleEvent(event);
-    res.status(200).json({ ok: true });
+    const response = await orchestrator.handleEvent(event);
+
+    if (response) {
+      return res.status(200).json(response);
+    } else {
+      return res.status(200).json({ ok: true });
+    }
   } catch (err: any) {
     console.error('❌ Error handling event:', err);
-    res.status(500).json({ ok: false, error: err.message });
+    const source = event.sender?.source != null ? String(event.sender.source) : undefined;
+    if (source == "telegram") {
+      res.status(200).json({ ok: false, error: err.message });
+    } else {
+      res.status(500).json({ ok: false, error: err.message });
+    }
   }
 });
 

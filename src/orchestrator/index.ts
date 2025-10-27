@@ -1,39 +1,64 @@
 import type { Event } from '../models/Event.js';
 import { v4 as uuidv4 } from 'uuid';
 import { AgentFactory } from '../agents/factory/index.js';
-import { Content, ToolMessage, AssistantMessage, UserMessage, Conversation, Message, LLMClient } from '../clients/llm.js';
+import { Content, ToolMessage, SystemMessage, AssistantMessage, UserMessage, Conversation, Message, LLMClient } from '../clients/llm.js';
 import { tursoClient } from '../clients/turso.js';
 import { parseMessage } from '../utils/messageParser.js';
 import { sendResponse } from '../clients/response.js';
 import { MCPClient } from "../clients/mcp.js";
 import { CONFIG } from "../utils/config.js"
 import { sanitizeResponseMessage } from '../utils/sanitiseResponseMessage.js';
-import type { OutgoingMessage } from '../models/Response.js';
+import type { ResponseMessage } from '../models/Response.js';
+import { sendGraphitiEpisode } from "../clients/graphiti.js";
 
+const THRESHOLD_HOURS: number = 3;
 
 interface UntypedDbRow {
   message: string;
   [key: string]: any;
 }
 
-function normalizeMessages(messages: Content[]): Content[] {
-  return messages.map((m) => {
-    const normalized: Content = { ...m };
+export function convertEventToUserMessage(event: Event): UserMessage {
+  const content: Content[] = [];
 
-    // Normalize field names to snake_case
-    if ((m as any).imageUrl) {
-      normalized.image_url = (m as any).imageUrl;
-      delete (normalized as any).imageUrl;
+  for (const msg of event.messages) {
+    // Add text if non-empty
+    if (msg.text?.trim()) {
+      content.push({
+        type: "text",
+        text: msg.text,
+      });
     }
 
-    if ((m as any).inputAudio) {
-      normalized.input_audio = (m as any).inputAudio;
-      delete (normalized as any).inputAudio;
+    // Add image if present and valid
+    if (msg.image?.url?.trim()) {
+      content.push({
+        type: "image_url",
+        image_url: {
+          url: msg.image.url,
+          format: msg.image.format,
+        },
+      });
     }
 
-    return normalized;
-  });
+    // Add audio if present and valid
+    if (msg.audio?.data?.trim()) {
+      content.push({
+        type: "input_audio",
+        input_audio: {
+          data: msg.audio.data,
+          format: msg.audio.format,
+        },
+      });
+    }
+  }
+
+  return {
+    role: "user",
+    content,
+  };
 }
+
 
 export class Orchestrator {
   private llm: LLMClient;
@@ -50,58 +75,85 @@ export class Orchestrator {
   public async handleEvent(event: Event) {
     if (!event.messages) throw new Error('Event missing messages');
 
-    const userId = event.sender?.userId != null ? String(event.sender.userId) : undefined;
-    const chatId = event.sender?.chatId != null ? String(event.sender.chatId) : undefined;
-    const placeholderMessageId = event.metadata?.placeholderMessageId ?? null;
-
-    if (!event.agentId) throw new Error('No agent specified');
-    let agentId = event.agentId;
-    let agentIdOverwritten: boolean = false;
-    let hasAudioInput: boolean = false;
-    let sessionId: string = uuidv4();
+    let agent_idOverwritten: boolean = false;
+    let hasAudioInput: boolean = false; // Determines if an audio output is required
     let sessionCommand: string | null = null;
     const conversation: Conversation = [];
 
+    // -- Unpack Event --
+    // 1. Sender
+    if (!event.agent_id) throw new Error('No agent specified');
+    let agent_id = event.agent_id;
+
+    // 2. Sender
+    const source = event.sender?.source != null ? String(event.sender.source) : undefined;
+    const is_bot = event.sender?.source != null ? Boolean(event.sender.is_bot) : undefined;
+    const id = event.sender?.id != null ? String(event.sender.id) : undefined;
+    const message_id = event.sender?.message_id != null ? String(event.sender.message_id) : undefined;
+    const user_id = event.sender?.user_id != null ? String(event.sender.user_id) : undefined;
+    const chat_id = event.sender?.chat_id != null ? String(event.sender.chat_id) : undefined;
+    const first_name = event.sender?.first_name != null ? String(event.sender.first_name) : undefined;
+    const last_name = event.sender?.last_name != null ? String(event.sender.last_name) : undefined;
+    const username = event.sender?.username != null ? String(event.sender.username) : undefined;
+
+    // 2. Metadata
+    const placeholder_message_id = event.metadata?.placeholder_message_id != null ? Number(event.metadata?.placeholder_message_id) : undefined;
+    let sessionId = event.metadata?.sessionId != null ? String(event.metadata?.sessionId) : undefined;
+
+    // 3. Messages
     for (const message of event.messages) {
       const messageType = message.type;
 
       if (messageType == "text") {
         if (!message.text) throw new Error('Text Event missing text');
         // --- Parse Message ---
-        const { cleanText, sessionCommand: sCommandValue, agentIdOverride: aIdOverwrite } = parseMessage(message.text);
+        const { cleanText, sessionCommand: sessionCommandValue, agent_idOverride: aIdOverwrite } = parseMessage(message.text);
         message.text = cleanText;
-        sessionCommand = sCommandValue || sessionCommand;
+        sessionCommand = sessionCommandValue || sessionCommand;
         if (aIdOverwrite) {
-          console.log(`Agent Overwritten - Default: ${agentId}, New: ${aIdOverwrite}`)
-          agentId = aIdOverwrite;
-          agentIdOverwritten = true; // Set flag to true if an override occurred
+          console.log(`Agent Overwritten - Default: ${agent_id}, New: ${aIdOverwrite}`)
+          agent_id = aIdOverwrite;
+          agent_idOverwritten = true; // Set flag to true if an override occurred
         }
-      } else if (messageType == "input_audio") {
+      } else if (messageType == "audio") {
         hasAudioInput = true;
       }
     }
 
     // --- Setup Agent ---
-    const agent = await this.agentFactory.get(agentId);
-    if (!agent) throw new Error(`No agent found for id ${agentId}`);
-
-    const { model = 'gemini-2.5-flash', systemPrompt = '' } = agent.config;
-    if (userId) {
+    const agent = await this.agentFactory.get(agent_id);
+    if (!agent) throw new Error(`No agent found for id ${agent_id}`);
+    const { model = 'gemini-2.5-flash', system_prompt = 'You are a helpful AI Agent.' } = agent.config;
+    if (sessionId === undefined) {
+      sessionId = uuidv4();
+    }
+    // --- Setup Session -- 
+    if (user_id) {
       switch (sessionCommand) {
         case 'new':
           console.log("Session command: NEW. Starting a fresh session.");
-          const systemMessage: Message = {
-            role: 'system',
-            content: systemPrompt,
+
+          // TODO: Fetch from Graphiti
+
+          const systemMessage: SystemMessage = {
+            role: "system",
+            content: [
+              {
+                type: "text",
+                text: system_prompt,
+              }
+              // TODO: Add inputs from Graphiti
+            ],
           };
+
           await tursoClient.logConversation({
             model,
             role: 'system',
             message: JSON.stringify(systemMessage),
-            user_id: userId,
-            chat_id: chatId,
+            user_id: user_id,
+            chat_id: chat_id,
             session_id: sessionId,
-            agent_id: agentId,
+            agent_id: agent_id,
           });
 
           conversation.push(systemMessage);
@@ -110,9 +162,132 @@ export class Orchestrator {
         // Fall-through: This case has no 'break;', so the execution falls directly
         default:
           console.log("Session command: None.");
+          // Existing Session; Fetch Conversation History
+          const rows = await tursoClient.getLatestConversationByuser_id(user_id);
 
-          const rows = await tursoClient.getLatestConversation(userId);
+          // Verify if last message is within new session threshold
+          const latestMessage = rows[rows.length - 1];
+          const latestTimestamMs = Number(latestMessage.timestamp) * 1000;
+          const timeThreshold = THRESHOLD_HOURS * 60 * 60 * 1000; // 10,800,000 milliseconds
+          const timeDifference = Date.now() - latestTimestamMs;
 
+          if (timeDifference > timeThreshold) {
+            console.log(`Session older than ${THRESHOLD_HOURS} hours.`);
+            // TODO: Fetch from Graphiti
+
+            const systemMessage: SystemMessage = {
+              role: "system",
+              content: [
+                {
+                  type: "text",
+                  text: system_prompt,
+                }
+                // TODO: Add inputs from Graphiti
+              ],
+            };
+
+            await tursoClient.logConversation({
+              model,
+              role: 'system',
+              message: JSON.stringify(systemMessage),
+              user_id: user_id,
+              chat_id: chat_id,
+              session_id: sessionId,
+              agent_id: agent_id,
+            });
+
+            conversation.push(systemMessage);
+          } else {
+            console.log(`Session within ${THRESHOLD_HOURS} hours.`);
+            sessionId = String(latestMessage.session_id); // use Session ID found on message.
+            for (const r of rows) {
+              const dbRow = r as unknown as UntypedDbRow;
+
+              try {
+                if (typeof dbRow.message === 'string') {
+                  const messageObject: Message = JSON.parse(dbRow.message);
+
+                  conversation.push(messageObject);
+                } else {
+                  console.warn('Row found without a valid "message" string property.');
+                }
+              } catch (error) {
+                console.error('Failed to parse message from database.', error, 'Row:', dbRow);
+              }
+            }
+            // User ask to chat with new Agent within the session
+            if (agent_idOverwritten) {
+              // TODO: Fetch from Graphiti
+
+              const systemMessage: SystemMessage = {
+                role: "system",
+                content: [
+                  {
+                    type: "text",
+                    text: system_prompt,
+                  }
+                  // TODO: Add inputs from Graphiti
+                ],
+              };
+              await tursoClient.logConversation({
+                model,
+                role: 'system',
+                message: JSON.stringify(systemMessage),
+                user_id: user_id,
+                chat_id: chat_id,
+                session_id: sessionId,
+                agent_id: agent_id,
+              });
+
+              conversation.push(systemMessage);
+            }
+          }
+      }
+    }
+    else {
+      console.log(`session id: ${sessionId}`)
+      if (sessionId === undefined) {
+        const systemMessage: SystemMessage = {
+          role: "system",
+          content: [
+            {
+              type: "text",
+              text: system_prompt,
+            }
+          ],
+        };
+        await tursoClient.logConversation({
+          model,
+          role: 'system',
+          message: JSON.stringify(systemMessage),
+          session_id: sessionId,
+          agent_id: agent_id,
+        });
+
+        conversation.push(systemMessage);
+      } else {
+        const rows = await tursoClient.getLatestConversationBySessionId(sessionId)
+        console.log(rows);
+        if (rows.length === 0) {
+          const systemMessage: SystemMessage = {
+            role: "system",
+            content: [
+              {
+                type: "text",
+                text: system_prompt,
+              }
+            ],
+          };
+          await tursoClient.logConversation({
+            model,
+            role: 'system',
+            message: JSON.stringify(systemMessage),
+            session_id: sessionId,
+            agent_id: agent_id,
+          });
+
+          conversation.push(systemMessage);
+        } else {
           for (const r of rows) {
             const dbRow = r as unknown as UntypedDbRow;
 
@@ -128,56 +303,21 @@ export class Orchestrator {
               console.error('Failed to parse message from database.', error, 'Row:', dbRow);
             }
           }
-          if (agentIdOverwritten) {
-            const systemMessage: Message = {
-              role: 'system',
-              content: systemPrompt,
-            };
-            await tursoClient.logConversation({
-              model,
-              role: 'system',
-              message: JSON.stringify(systemMessage),
-              user_id: userId,
-              chat_id: chatId,
-              session_id: sessionId,
-              agent_id: agentId,
-            });
+        }
 
-            conversation.push(systemMessage);
-          }
+
       }
     }
-    else {
-      // Not User: always new session
-      const systemMessage: Message = {
-        role: 'system',
-        content: systemPrompt,
-      };
-      await tursoClient.logConversation({
-        model,
-        role: 'system',
-        message: JSON.stringify(systemMessage),
-        user_id: userId,
-        chat_id: chatId,
-        session_id: sessionId,
-        agent_id: agentId,
-      });
-
-      conversation.push(systemMessage);
-    }
-    const userMessage: UserMessage = {
-      role: 'user',
-      content: normalizeMessages(event.messages),
-    };
+    const userMessage: UserMessage = convertEventToUserMessage(event);
 
     await tursoClient.logConversation({
       model,
       role: 'system',
       message: JSON.stringify(userMessage),
-      user_id: userId,
-      chat_id: chatId,
+      user_id: user_id,
+      chat_id: chat_id,
       session_id: sessionId,
-      agent_id: agentId,
+      agent_id: agent_id,
     });
     conversation.push(userMessage);
 
@@ -186,7 +326,15 @@ export class Orchestrator {
     let firstOutgoingMessageSent = false;
 
     // Fetch MCP tools
-    const llmTools = await this.mcpClient.listTools();
+    const allTools = await this.mcpClient.listTools();
+
+    // Get allowed tools from the agent configuration
+    const allowedTools = agent.config.mcp_servers?.flatMap(server => server.allowed_tools) ?? [];
+
+    // Filter the MCP tool list based on allowed tools
+    const llmTools = allTools.filter(tool => allowedTools.includes(tool.name));
+
+    console.log(llmTools);
 
     while (true) {
       const response: any = await this.llm.sendConversation(model, conversation, llmTools);
@@ -199,7 +347,7 @@ export class Orchestrator {
       console.log("Sanitised LLM Response:\n", responseMessage)
 
       const finishReason = choice.finish_reason;
-
+      console.log("Finish Reason:\n", finishReason)
       const usage = response?.usage;
       const completionTokens = usage.completion_tokens;
       const promptTokens = usage.prompt_tokens;
@@ -210,10 +358,10 @@ export class Orchestrator {
         role: responseMessage.role,
         message: JSON.stringify(responseMessage),
         finish_reason: finishReason,
-        user_id: userId,
-        chat_id: chatId,
+        user_id: user_id,
+        chat_id: chat_id,
         session_id: sessionId,
-        agent_id: agentId,
+        agent_id: agent_id,
         completion_tokens: completionTokens,
         prompt_tokens: promptTokens,
         total_tokens: totalTokens
@@ -229,17 +377,19 @@ export class Orchestrator {
 
       if (toolCalls.length > 0) {
 
-        await sendResponse(
-          event,
-          {
-            type: 'text',
-            content: `🛠 Resolving ${toolCalls.length} tool call(s)`,
-            // placeholderMessageId will be automatically added if includePlaceholder is true
-          },
-          {
-            includePlaceholder: !!event.metadata.placeholderMessageId,
-          }
-        );
+        if (is_bot === false) {
+          await sendResponse(
+            event,
+            {
+              type: 'text',
+              text: `🛠 Resolving ${toolCalls.length} tool call(s)`,
+              // placeholder_message_id will be automatically added if includePlaceholder is true
+            },
+            {
+              includePlaceholder: !!placeholder_message_id
+            }
+          );
+        }
 
         for (const call of toolCalls) {
           const { id: tool_call_id, function: fn } = call;
@@ -266,10 +416,24 @@ export class Orchestrator {
             toolResult = { error: String(err) };
           }
 
-          // --- Build Tool Message ---
+          // --- Extract the relevant content/messages array ---
+          let contentArray: any[] = [];
+
+          if (toolResult?.result?.content) {
+            // Case 1: result.content
+            contentArray = toolResult.result.content;
+          } else if (toolResult?.messages) {
+            // Case 2: messages
+            contentArray = toolResult.messages;
+          } else {
+            // Fallback if neither exists
+            contentArray = [toolResult];
+          }
+
+          // --- Build ToolMessage ---
           const toolMessage: ToolMessage = {
-            role: 'tool',
-            content: JSON.stringify(toolResult),
+            role: "tool",
+            content: JSON.stringify(contentArray, null, 2),
             tool_call_id,
           };
 
@@ -278,24 +442,23 @@ export class Orchestrator {
             model,
             role: 'tool',
             message: JSON.stringify(toolMessage),
-            user_id: userId,
-            chat_id: chatId,
+            user_id: user_id,
+            chat_id: chat_id,
             session_id: sessionId,
-            agent_id: agentId,
+            agent_id: agent_id,
           });
 
           console.log(`🗃️ Logged tool result for '${name}'`);
 
           conversation.push(toolMessage);
         }
-        continue;
       }
       // --- Final assistant text ---
       else if (finishReason === 'stop' && responseMessage.content !== null) {
         finalAssistantText = responseMessage.content;
 
-        const outgoingMessages: OutgoingMessage[] = [
-          { type: 'text', content: finalAssistantText }
+        const outgoingMessages: ResponseMessage[] = [
+          { type: 'text', text: finalAssistantText }
         ];
 
         if (hasAudioInput) {
@@ -318,13 +481,52 @@ export class Orchestrator {
           }
         }
 
-        // Send whatever messages we have (text + optional audio)
-        await sendResponse(event, outgoingMessages, {
-          includePlaceholder: !firstOutgoingMessageSent && placeholderMessageId != null
-        });
+        const hasRecipients = event.recipients && event.recipients.length > 0;
+        if (hasRecipients) {
+          await sendResponse(event, outgoingMessages, {
+            includePlaceholder: !firstOutgoingMessageSent && placeholder_message_id != null
+          });
 
-        firstOutgoingMessageSent = true;
-        break;
+          firstOutgoingMessageSent = true;
+
+          // -- Graphiti --
+          if (is_bot === false) {
+            let message: string = "";
+            if (hasAudioInput) {
+              try {
+                const audioContent = userMessage.content.find(c => c.type === 'input_audio')?.input_audio;
+
+                if (audioContent?.data) {
+                  message = await this.llm.audioToText(audioContent.data, audioContent.format);
+                  console.log("Transcribed text:", message);
+                }
+              } catch (err) {
+                console.error('❌ STT failed, not sending to Graphiti', err);
+              }
+            } else {
+              message = userMessage.content.find(c => c.type === 'text')?.text ?? "";
+            }
+            await sendGraphitiEpisode({
+              sessionId: sessionId,
+              messageCount: conversation.length,
+              firstName: first_name,
+              username: username,
+              agentId: agent_id,
+              userMessage: message,
+            });
+          }
+          return
+        } else {
+          console.log(`Returning final response`)
+          return {
+            id: event.id,
+            messages: outgoingMessages,
+            metadata: {
+              agent_id,
+              sessionId
+            }
+          };
+        }
       }
     }
   }

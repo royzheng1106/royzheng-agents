@@ -20,7 +20,7 @@ export class LLMClient {
   private apiKey: string;
 
   constructor(
-    baseUrl = "https://royzheng-llm.hf.space",
+    baseUrl = "https://royzheng-llm.vercel.app",
     apiKey: string = CONFIG.LLM_API_KEY!
   ) {
     this.baseUrl = baseUrl;
@@ -66,6 +66,64 @@ export class LLMClient {
     }
 
     return await response.json();
+  }
+
+  /**
+ * Convert audio input to text using LiteLLM.
+ * @param audioData - Base64-encoded audio string
+ * @param format - Audio format (e.g., "ogg", "mp3")
+ * @param model - Model to use for transcription (default: "gemini-2.5-flash-lite")
+ * @returns A Promise containing the transcription result from LiteLLM
+ */
+  async audioToText(
+    audioData: string,
+    format: string = "ogg",
+    model: string = "gemini-2.5-flash-lite"
+  ): Promise<string> {
+    const payload = {
+      model,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "Please provide a complete transcription of the speech in this audio clip."
+            },
+            {
+              type: "input_audio",
+              input_audio: {
+                data: audioData,
+                format
+              }
+            }
+          ]
+        }
+      ]
+    };
+
+    console.log(`[LLMClient] Sending audio for transcription to LiteLLM: ${model}`);
+
+    const response = await fetch(`${this.baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + this.apiKey,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Audio transcription request failed: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const choice = data?.choices?.[0];
+    const message = choice?.message;
+
+    if (!message?.content) return "";
+
+    return message.content;
   }
 
   /**
@@ -168,7 +226,7 @@ export interface AssistantMessage {
  */
 export interface SystemMessage {
   role: "system";
-  content: string;
+  content: Content[];
 }
 
 /**

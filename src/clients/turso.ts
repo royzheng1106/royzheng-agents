@@ -79,8 +79,8 @@ export class TursoClient {
     }
   }
 
-  public async getLatestConversation(userId: string) {
-    const userIdStr = String(userId);
+  public async getLatestConversationByuser_id(user_id: string) {
+    const user_idStr = String(user_id);
 
     const sql = `
       SELECT
@@ -105,7 +105,29 @@ export class TursoClient {
 
     const res = await this.db.execute({
       sql: sql,
-      args: [userIdStr],
+      args: [user_idStr],
+    });
+
+    return res.rows ?? [];
+  }
+
+  public async getLatestConversationBySessionId(sessionId: string) {
+    const sessionIdStr = String(sessionId);
+
+    const sql = `
+      SELECT
+        *
+      FROM
+        conversation_history
+      WHERE
+        session_id = ?
+      ORDER BY
+        timestamp ASC
+    `;
+
+    const res = await this.db.execute({
+      sql: sql,
+      args: [sessionIdStr],
     });
 
     return res.rows ?? [];
@@ -126,12 +148,12 @@ export class TursoClient {
   /**
    * Get latest session for a user or create a new session.
    */
-  // public async getOrCreateSession(userId: string, maxAgeHours = 3): Promise<{ sessionId: string; isNew: boolean }> {
-  //   const userIdStr = String(userId);
+  // public async getOrCreateSession(user_id: string, maxAgeHours = 3): Promise<{ sessionId: string; isNew: boolean }> {
+  //   const user_idStr = String(user_id);
 
   //   const res = await this.db.execute({
   //     sql: `SELECT session_id, timestamp FROM conversation_history WHERE user_id = ? ORDER BY timestamp DESC LIMIT 1`,
-  //     args: [userIdStr],
+  //     args: [user_idStr],
   //   });
 
   //   const latest = res?.rows?.[0];
@@ -144,12 +166,12 @@ export class TursoClient {
   //   return { sessionId: uuidv4(), isNew: true };
   // }
 
-  public async getSession(userId: string): Promise<{ sessionId: string }> {
-    const userIdStr = String(userId);
+  public async getSession(user_id: string): Promise<{ sessionId: string }> {
+    const user_idStr = String(user_id);
 
     const res = await this.db.execute({
       sql: `SELECT session_id, timestamp FROM conversation_history WHERE user_id = ? ORDER BY timestamp DESC LIMIT 1`,
-      args: [userIdStr],
+      args: [user_idStr],
     });
     const latest = res?.rows?.[0];
 

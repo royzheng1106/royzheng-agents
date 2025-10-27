@@ -53,7 +53,7 @@ export class MCPClient {
             ...(params ? { params } : {}),
         };
 
-        const response = await fetch(`${this.url}`, {
+        const response = await fetch(this.url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -67,34 +67,43 @@ export class MCPClient {
             throw new Error(`MCP request failed: ${response.status} ${response.statusText}`);
         }
 
+        const contentType = response.headers.get('content-type') || '';
+
+        // Non-streaming JSON response
+        if (contentType.includes('application/json')) {
+            return (await response.json()) as T;
+        }
+
+        // SSE fallback
         const reader = response.body!.getReader();
         const decoder = new TextDecoder();
+        let buffer = '';
 
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
+            buffer += decoder.decode(value, { stream: true });
 
-            const chunk = decoder.decode(value, { stream: true });
-            for (const line of chunk.split('\n')) {
+            for (const line of buffer.split('\n')) {
                 if (line.startsWith('data:')) {
                     const jsonStr = line.replace(/^data:\s*/, '');
                     try {
-                        // parse JSON and cast to T
                         return JSON.parse(jsonStr) as T;
                     } catch {
-                        // incomplete JSON, wait for next chunk
+                        // ignore partial chunk
                     }
                 }
             }
         }
 
-        throw new Error('No valid JSON received from MCP SSE');
+        throw new Error('No valid JSON received from MCP SSE or plain JSON');
     }
+
 
     /** Fetch the list of available tools from the MCP server, cleaned for LLM use */
     async listTools(): Promise<Array<{ name: string; description: string; parameters: Record<string, any> }>> {
         const data = await this.request<MCPListToolsResponse>('tools/list');
-
+        console.log(data);
         return data.result.tools.map(tool => {
             const { additionalProperties, $schema, ...cleanedParameters } = tool.inputSchema;
             return {
@@ -109,6 +118,7 @@ export class MCPClient {
     /** Call a specific MCP tool with optional arguments */
     async callTool(params: MCPCallToolParams): Promise<any> {
         const data = await this.request<MCPCallToolResponse>('tools/call', params);
+        console.log(`Tool Results: ${data}`);
         return data.result;
     }
 }

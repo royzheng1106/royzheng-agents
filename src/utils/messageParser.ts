@@ -1,11 +1,11 @@
 export function parseMessage(raw: string): {
   cleanText: string;
   sessionCommand?: string;
-  agentIdOverride?: string;
+  agent_idOverride?: string;
 } {
   let text = (raw ?? '').trim();
   let sessionCommand: string | undefined;
-  let agentIdOverride: string | undefined;
+  let agent_idOverride: string | undefined;
 
   // find tags like [s:new], [a:weather], or [s:new;a:weather]
   const matches = text.match(/\[([^\]]+)\]/g) || [];
@@ -28,14 +28,14 @@ export function parseMessage(raw: string): {
       }
       // Note: Agent ID value is only lowercased for the internal check 'v', 
       // but we should probably keep the original casing for the override value 
-      // since 'agentId' might be case-sensitive.
+      // since 'agent_id' might be case-sensitive.
       if (k === 'a' && v) {
-        // Use the original casing for the agentIdOverride value
-        agentIdOverride = vRaw;
+        // Use the original casing for the agent_idOverride value
+        agent_idOverride = vRaw;
       }
     }
     text = text.replace(m, '').trim();
   }
 
-  return { cleanText: text, sessionCommand, agentIdOverride };
+  return { cleanText: text, sessionCommand, agent_idOverride };
 }

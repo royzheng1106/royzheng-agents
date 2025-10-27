@@ -1,37 +1,37 @@
 import type { Event } from '../models/Event.js';
-import type { Response, OutgoingRecipient, OutgoingMessage } from '../models/Response.js';
+import type { Response, ResponseRecipient, ResponseMessage } from '../models/Response.js';
 import { CONFIG } from '../utils/config.js';
 
 /**
  * Send one or multiple messages to the integration endpoint.
  * - Each message can be text, audio, or both.
- * - includePlaceholder: include placeholderMessageId in the first message (if it exists)
+ * - includePlaceholder: include placeholder_message_id in the first message (if it exists)
  */
 export async function sendResponse(
   event: Event,
-  messages: OutgoingMessage | OutgoingMessage[],
+  messages: ResponseMessage | ResponseMessage[],
   options?: { includePlaceholder?: boolean }
 ) {
   // Normalize to array
-  const msgs: OutgoingMessage[] = Array.isArray(messages) ? messages : [messages];
+  const msgs: ResponseMessage[] = Array.isArray(messages) ? messages : [messages];
 
-  // Add placeholderMessageId to the first message if required
-  if (options?.includePlaceholder && event.metadata?.placeholderMessageId != null) {
-    msgs[0].placeholderMessageId = event.metadata.placeholderMessageId;
+  // Add placeholder_message_id to the first message if required
+  if (options?.includePlaceholder && event.metadata?.placeholder_message_id != null) {
+    msgs[0].placeholder_message_id = event.metadata.placeholder_message_id;
   }
 
   const payload: Response = {
     id: event.id,
-    recipients: (event.recipients || []).map((r: any): OutgoingRecipient => ({
+    recipients: (event.recipients || []).map((r: any): ResponseRecipient => ({
       channel: r.channel,
       id: r.id ?? undefined,
-      userId: r.userId ?? undefined,
-      chatId: r.chatId ?? undefined,
+      user_id: r.user_id ?? undefined,
+      chat_id: r.chat_id ?? undefined,
     })),
     messages: msgs,
     metadata: {
       source: event.sender?.source,
-      agentId: event.agentId,
+      agent_id: event.agent_id,
     },
   };
 
@@ -58,7 +58,7 @@ export async function sendResponse(
 /**
  * Send a background (intermediate/tool) message.
  * - Always italicized
- * - includePlaceholder: include placeholderMessageId in the first message if present
+ * - includePlaceholder: include placeholder_message_id in the first message if present
  */
 export async function sendBackgroundMessage(
   event: Event,
@@ -68,22 +68,22 @@ export async function sendBackgroundMessage(
   const formatted = `_${content}_`; // always italic
 
   const message: any = { type: 'text', content: formatted };
-  if (options?.includePlaceholder && event.metadata?.placeholderMessageId != null) {
-    message.placeholderMessageId = event.metadata.placeholderMessageId;
+  if (options?.includePlaceholder && event.metadata?.placeholder_message_id != null) {
+    message.placeholder_message_id = event.metadata.placeholder_message_id;
   }
 
   const payload: Response = {
     id: event.id,
-    recipients: (event.recipients || []).map((r: any): OutgoingRecipient => ({
+    recipients: (event.recipients || []).map((r: any): ResponseRecipient => ({
       channel: r.channel,
       id: r.id ?? undefined,
-      userId: r.userId ?? undefined,
-      chatId: r.chatId ?? undefined,
+      user_id: r.user_id ?? undefined,
+      chat_id: r.chat_id ?? undefined,
     })),
     messages: [message],
     metadata: {
       source: event.sender?.source,
-      agentId: event.agentId,
+      agent_id: event.agent_id,
     },
   };
   console.log(JSON.stringify(payload));
