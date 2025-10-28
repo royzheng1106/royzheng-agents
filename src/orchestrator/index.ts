@@ -67,7 +67,7 @@ export class Orchestrator {
   constructor(private agentFactory: AgentFactory) {
     this.llm = new LLMClient();
     this.mcpClient = new MCPClient(
-      'https://royzheng-core.vercel.app/api/mcp',
+      'https://royzheng-core.hf.space/api/mcp',
       CONFIG.MCP_API_KEY!
     );
   }
@@ -402,7 +402,7 @@ export class Orchestrator {
           } catch (err) {
             console.error(`❌ Failed to parse tool arguments for ${name}:`, argsRaw);
           }
-
+          console.log("Handling Tool Call");
           // --- Call MCP Tool ---
           let toolResult: any;
           try {

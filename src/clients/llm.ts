@@ -20,7 +20,7 @@ export class LLMClient {
   private apiKey: string;
 
   constructor(
-    baseUrl = "https://royzheng-llm.hf.space",
+    baseUrl = "https://royzheng-llm.vercel.app",
     apiKey: string = CONFIG.LLM_API_KEY!
   ) {
     this.baseUrl = baseUrl;

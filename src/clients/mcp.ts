@@ -58,7 +58,7 @@ export class MCPClient {
             headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json, text/event-stream',
-                'x-api-key': this.apiKey,
+                'Authorization': 'Bearer ' + this.apiKey,
             },
             body: JSON.stringify(payload),
         });
@@ -66,37 +66,51 @@ export class MCPClient {
         if (!response.ok) {
             throw new Error(`MCP request failed: ${response.status} ${response.statusText}`);
         }
-
+        console.dir(response);
         const contentType = response.headers.get('content-type') || '';
-
+        console.log(`Response: ${contentType}`)
         // Non-streaming JSON response
         if (contentType.includes('application/json')) {
             return (await response.json()) as T;
         }
 
-        // SSE fallback
+        // SSE fallback (diagnostic)
         const reader = response.body!.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
 
+        console.log('--- Begin Streaming Response ---');
+
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-            buffer += decoder.decode(value, { stream: true });
 
-            for (const line of buffer.split('\n')) {
+            const chunk = decoder.decode(value, { stream: true });
+            buffer += chunk;
+
+            // Log raw data as it arrives
+            console.log('RAW CHUNK >>>', JSON.stringify(chunk));
+
+            // Optional: also show parsed lines for debugging
+            const lines = buffer.split('\n');
+            for (const line of lines) {
+                console.log('LINE:', line);
                 if (line.startsWith('data:')) {
                     const jsonStr = line.replace(/^data:\s*/, '');
+                    console.log('DATA LINE JSON STRING:', jsonStr);
                     try {
-                        return JSON.parse(jsonStr) as T;
-                    } catch {
-                        // ignore partial chunk
+                        const parsed = JSON.parse(jsonStr);
+                        console.log('✅ PARSED EVENT:', parsed);
+                        return parsed as T;
+                    } catch (err) {
+                        console.warn('⚠️ Partial/incomplete JSON:', err);
                     }
                 }
             }
         }
-
+        console.log('--- End of Stream ---');
         throw new Error('No valid JSON received from MCP SSE or plain JSON');
+
     }
 
 
@@ -117,6 +131,7 @@ export class MCPClient {
 
     /** Call a specific MCP tool with optional arguments */
     async callTool(params: MCPCallToolParams): Promise<any> {
+        console.log(`In Call Tool`);
         const data = await this.request<MCPCallToolResponse>('tools/call', params);
         console.log(`Tool Results: ${data}`);
         return data.result;

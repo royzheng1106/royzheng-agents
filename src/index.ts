@@ -16,25 +16,25 @@ app.use(express.urlencoded({ limit: "5mb", extended: true }));
 
 // Middleware to validate API key
 function requireApiKey(req: express.Request, res: express.Response, next: express.NextFunction) {
-  // // Normalize x-api-key
-  // let apiKey = Array.isArray(req.headers['x-api-key'])
-  //   ? req.headers['x-api-key'][0]
-  //   : req.headers['x-api-key'];
+  // Normalize x-api-key
+  let apiKey = Array.isArray(req.headers['x-api-key'])
+    ? req.headers['x-api-key'][0]
+    : req.headers['x-api-key'];
 
-  // // If not present, check Authorization header
-  // if (!apiKey) {
-  //   let authHeader = Array.isArray(req.headers['authorization'])
-  //     ? req.headers['authorization'][0]
-  //     : req.headers['authorization'];
+  // If not present, check Authorization header
+  if (!apiKey) {
+    let authHeader = Array.isArray(req.headers['authorization'])
+      ? req.headers['authorization'][0]
+      : req.headers['authorization'];
 
-  //   if (authHeader && authHeader.startsWith('Bearer ')) {
-  //     apiKey = authHeader.substring(7); // strip 'Bearer '
-  //   }
-  // }
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      apiKey = authHeader.substring(7); // strip 'Bearer '
+    }
+  }
 
-  // if (apiKey !== CONFIG.API_KEY) {
-  //   return res.status(401).json({ ok: false, error: 'Unauthorized: invalid API key' });
-  // }
+  if (apiKey !== CONFIG.API_KEY) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized: invalid API key' });
+  }
 
   next();
 }
