@@ -7,6 +7,8 @@ import { client as mongoClient } from './clients/mongodb.js';
 import agentsRouter from "./agents/index.js";
 import { tursoClient } from './clients/turso.js';
 
+const IS_VERCEL = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
+
 const app = express();
 
 // Increase request size limit to handle base64 audio
@@ -16,6 +18,12 @@ app.use(express.urlencoded({ limit: "5mb", extended: true }));
 
 // Middleware to validate API key
 function requireApiKey(req: express.Request, res: express.Response, next: express.NextFunction) {
+
+  if (!IS_VERCEL) {
+    console.log("Local environment detected. Bypassing API Key check.");
+    return next();
+  }
+
   // Normalize x-api-key
   let apiKey = Array.isArray(req.headers['x-api-key'])
     ? req.headers['x-api-key'][0]

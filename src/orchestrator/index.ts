@@ -18,6 +18,8 @@ interface UntypedDbRow {
   [key: string]: any;
 }
 
+const IS_VERCEL = process.env.VERCEL === '1';
+
 export function convertEventToUserMessage(event: Event): UserMessage {
   const content: Content[] = [];
 
@@ -66,8 +68,15 @@ export class Orchestrator {
 
   constructor(private agentFactory: AgentFactory) {
     this.llm = new LLMClient();
+
+    let baseUrl = "https://royzheng-core.vercel.app";
+
+    if (!IS_VERCEL) {
+      baseUrl = "https://royzheng-core.hf.space";
+    }
+
     this.mcpClient = new MCPClient(
-      'https://royzheng-core.hf.space/api/mcp',
+      `${baseUrl}/api/mcp`,
       CONFIG.MCP_API_KEY!
     );
   }
