@@ -20,7 +20,7 @@ app.use(express.urlencoded({ limit: "5mb", extended: true }));
 function requireApiKey(req: express.Request, res: express.Response, next: express.NextFunction) {
 
   if (!IS_VERCEL) {
-    console.log("Local environment detected. Bypassing API Key check.");
+    console.log("Bypassing API Key check as it is not Vercel.");
     return next();
   }
 

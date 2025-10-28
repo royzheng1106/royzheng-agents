@@ -47,9 +47,6 @@ export class LLMClient {
       console.log(`[LLMClient] Including ${tools.length} tools`);
     }
 
-    console.log(`[LLMClient] Sending conversation to LiteLLM: ${model}`);
-    console.log(JSON.stringify(payload, null, 2));
-
     const response = await fetch(`${this.baseUrl}/chat/completions`, {
       method: "POST",
       headers: {

@@ -66,9 +66,7 @@ export class MCPClient {
         if (!response.ok) {
             throw new Error(`MCP request failed: ${response.status} ${response.statusText}`);
         }
-        console.dir(response);
         const contentType = response.headers.get('content-type') || '';
-        console.log(`Response: ${contentType}`)
         // Non-streaming JSON response
         if (contentType.includes('application/json')) {
             return (await response.json()) as T;
@@ -79,8 +77,6 @@ export class MCPClient {
         const decoder = new TextDecoder();
         let buffer = '';
 
-        console.log('--- Begin Streaming Response ---');
-
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
@@ -88,27 +84,19 @@ export class MCPClient {
             const chunk = decoder.decode(value, { stream: true });
             buffer += chunk;
 
-            // Log raw data as it arrives
-            console.log('RAW CHUNK >>>', JSON.stringify(chunk));
-
             // Optional: also show parsed lines for debugging
             const lines = buffer.split('\n');
             for (const line of lines) {
-                console.log('LINE:', line);
                 if (line.startsWith('data:')) {
                     const jsonStr = line.replace(/^data:\s*/, '');
-                    console.log('DATA LINE JSON STRING:', jsonStr);
                     try {
                         const parsed = JSON.parse(jsonStr);
-                        console.log('✅ PARSED EVENT:', parsed);
                         return parsed as T;
                     } catch (err) {
-                        console.warn('⚠️ Partial/incomplete JSON:', err);
                     }
                 }
             }
         }
-        console.log('--- End of Stream ---');
         throw new Error('No valid JSON received from MCP SSE or plain JSON');
 
     }

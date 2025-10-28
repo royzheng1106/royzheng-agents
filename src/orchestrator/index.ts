@@ -69,14 +69,14 @@ export class Orchestrator {
   constructor(private agentFactory: AgentFactory) {
     this.llm = new LLMClient();
 
-    let baseUrl = "https://royzheng-core.vercel.app";
+    let baseUrlCore = "https://royzheng-core.vercel.app";
 
     if (!IS_VERCEL) {
-      baseUrl = "https://royzheng-core.hf.space";
+      baseUrlCore = "https://royzheng-core.hf.space";
     }
 
     this.mcpClient = new MCPClient(
-      `${baseUrl}/api/mcp`,
+      `${baseUrlCore}/api/mcp`,
       CONFIG.MCP_API_KEY!
     );
   }
@@ -254,7 +254,6 @@ export class Orchestrator {
       }
     }
     else {
-      console.log(`session id: ${sessionId}`)
       if (sessionId === undefined) {
         const systemMessage: SystemMessage = {
           role: "system",
@@ -276,7 +275,6 @@ export class Orchestrator {
         conversation.push(systemMessage);
       } else {
         const rows = await tursoClient.getLatestConversationBySessionId(sessionId)
-        console.log(rows);
         if (rows.length === 0) {
           const systemMessage: SystemMessage = {
             role: "system",
@@ -343,8 +341,6 @@ export class Orchestrator {
     // Filter the MCP tool list based on allowed tools
     const llmTools = allTools.filter(tool => allowedTools.includes(tool.name));
 
-    console.log(llmTools);
-
     while (true) {
       const response: any = await this.llm.sendConversation(model, conversation, llmTools);
 
@@ -356,7 +352,6 @@ export class Orchestrator {
       console.log("Sanitised LLM Response:\n", responseMessage)
 
       const finishReason = choice.finish_reason;
-      console.log("Finish Reason:\n", finishReason)
       const usage = response?.usage;
       const completionTokens = usage.completion_tokens;
       const promptTokens = usage.prompt_tokens;
@@ -411,7 +406,6 @@ export class Orchestrator {
           } catch (err) {
             console.error(`❌ Failed to parse tool arguments for ${name}:`, argsRaw);
           }
-          console.log("Handling Tool Call");
           // --- Call MCP Tool ---
           let toolResult: any;
           try {
@@ -456,8 +450,6 @@ export class Orchestrator {
             session_id: sessionId,
             agent_id: agent_id,
           });
-
-          console.log(`🗃️ Logged tool result for '${name}'`);
 
           conversation.push(toolMessage);
         }
@@ -507,7 +499,6 @@ export class Orchestrator {
 
                 if (audioContent?.data) {
                   message = await this.llm.audioToText(audioContent.data, audioContent.format);
-                  console.log("Transcribed text:", message);
                 }
               } catch (err) {
                 console.error('❌ STT failed, not sending to Graphiti', err);
@@ -526,7 +517,6 @@ export class Orchestrator {
           }
           return
         } else {
-          console.log(`Returning final response`)
           return {
             id: event.id,
             messages: outgoingMessages,
