@@ -38,11 +38,11 @@ export async function sendResponse(
   console.log('Sending payload:', JSON.stringify(payload, null, 2));
 
   try {
-    const res = await fetch('https://royzheng-integrations.vercel.app/api/send-response', {
+    const res = await fetch('https://royzheng-integrations-lb.hf.space/api/send-response', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': CONFIG.INT_API_KEY!,
+        'Authorization': 'Bearer ' + CONFIG.INT_API_KEY!,
       },
       body: JSON.stringify(payload),
     });
