@@ -32,7 +32,7 @@ function getEnv(key: string): string | undefined {
  */
 export const CONFIG = {
   APP_ENV,
-  IS_VERCEL: process.env.VERCEL === "1" || getEnv("APP_ENV") === "production",
+  IS_VERCEL: process.env.VERCEL === "1",
   PORT: process.env.PORT || 7860,
   MONGODB_URI: getEnv("MONGODB_URI"),
   MONGODB_DB_NAME: getEnv("MONGODB_DB_NAME") || "agents",

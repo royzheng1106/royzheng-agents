@@ -69,11 +69,7 @@ export class Orchestrator {
   constructor(private agentFactory: AgentFactory) {
     this.llm = new LLMClient();
 
-    let baseUrlCore = "https://royzheng-core.vercel.app";
-
-    if (!IS_VERCEL) {
-      baseUrlCore = "https://royzheng-core.hf.space";
-    }
+    let baseUrlCore = "https://royzheng-core-lb.hf.space";
 
     this.mcpClient = new MCPClient(
       `${baseUrlCore}/api/mcp`,

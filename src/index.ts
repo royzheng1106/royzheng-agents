@@ -7,7 +7,7 @@ import { client as mongoClient } from './clients/mongodb.js';
 import agentsRouter from "./agents/index.js";
 import { tursoClient } from './clients/turso.js';
 
-const IS_VERCEL = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
+const IS_VERCEL = process.env.VERCEL === '1';
 
 const app = express();
 
