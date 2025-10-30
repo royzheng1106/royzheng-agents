@@ -9,7 +9,7 @@ import { MCPClient } from "../clients/mcp.js";
 import { CONFIG } from "../utils/config.js"
 import { sanitizeResponseMessage } from '../utils/sanitiseResponseMessage.js';
 import type { ResponseMessage } from '../models/Response.js';
-import { sendGraphitiEpisode } from "../clients/graphiti.js";
+import { sendGraphitiEpisode, searchGraphiti } from "../clients/graphiti.js";
 
 const THRESHOLD_HOURS: number = 3;
 
@@ -17,8 +17,6 @@ interface UntypedDbRow {
   message: string;
   [key: string]: any;
 }
-
-const IS_VERCEL = process.env.VERCEL === '1';
 
 export function convertEventToUserMessage(event: Event): UserMessage {
   const content: Content[] = [];
@@ -138,7 +136,62 @@ export class Orchestrator {
         case 'new':
           console.log("Session command: NEW. Starting a fresh session.");
 
-          // TODO: Fetch from Graphiti
+          let graphitiResults: any = null;
+
+          if (is_bot === false) {
+            const name = first_name?.trim() || username?.trim();
+
+            await sendResponse(
+              event,
+              {
+                type: 'text',
+                text: `🔍 Retrieving context from previous interactions...`,
+                // placeholder_message_id will be automatically added if includePlaceholder is true
+              },
+              {
+                includePlaceholder: !!placeholder_message_id
+              }
+            );
+
+            if (name) {
+              try {
+                const searchResponse = await searchGraphiti({ text: name });
+                graphitiResults = searchResponse?.results || null;
+
+                const nodeCount = graphitiResults?.nodes?.length || 0;
+                const edgeCount = graphitiResults?.edges?.length || 0;
+                console.log(`Graphiti search found ${nodeCount} nodes and ${edgeCount} edges for "${name}".`);
+              } catch (error) {
+                console.error("Error searching Graphiti:", error);
+              }
+            } else {
+              console.log("⚠️ No valid name found — skipping Graphiti search.");
+            }
+          }
+
+          // Build readable summaries from the nodes and edges
+          let graphitiContext = "";
+
+          if (graphitiResults) {
+            const nodeSummaries =
+              graphitiResults.nodes
+                ?.slice(0, 5) // limit to top 5 nodes
+                .map((node: any) => `- ${node.name}: ${node.summary}`)
+                .join("\n") || "";
+
+            const edgeFacts =
+              graphitiResults.edges
+                ?.slice(0, 5)
+                .map((edge: any) => `- ${edge.fact}`)
+                .join("\n") || "";
+
+            if (nodeSummaries || edgeFacts) {
+              graphitiContext = `Here are relevant facts about ${first_name || user_id} from the Graphiti knowledge graph:\n\n` +
+                (nodeSummaries ? `🧠 Entities:\n${nodeSummaries}\n\n` : "") +
+                (edgeFacts ? `🔗 Relationships:\n${edgeFacts}` : "");
+            }
+          }
+          console.log(graphitiContext)
 
           const systemMessage: SystemMessage = {
             role: "system",
@@ -146,8 +199,15 @@ export class Orchestrator {
               {
                 type: "text",
                 text: system_prompt,
-              }
-              // TODO: Add inputs from Graphiti
+              },
+              ...(graphitiContext
+                ? [
+                  {
+                    type: "text" as const,
+                    text: graphitiContext,
+                  },
+                ]
+                : []),
             ],
           };
 
@@ -178,7 +238,62 @@ export class Orchestrator {
 
           if (timeDifference > timeThreshold) {
             console.log(`Session older than ${THRESHOLD_HOURS} hours.`);
-            // TODO: Fetch from Graphiti
+            let graphitiResults: any = null;
+
+            if (is_bot === false) {
+              const name = first_name?.trim() || username?.trim();
+
+              await sendResponse(
+                event,
+                {
+                  type: 'text',
+                  text: `🔍 Retrieving context from previous interactions...`,
+                  // placeholder_message_id will be automatically added if includePlaceholder is true
+                },
+                {
+                  includePlaceholder: !!placeholder_message_id
+                }
+              );
+
+              if (name) {
+                try {
+                  const searchResponse = await searchGraphiti({ text: name });
+                  graphitiResults = searchResponse?.results || null;
+
+                  const nodeCount = graphitiResults?.nodes?.length || 0;
+                  const edgeCount = graphitiResults?.edges?.length || 0;
+                  console.log(`Graphiti search found ${nodeCount} nodes and ${edgeCount} edges for "${name}".`);
+                } catch (error) {
+                  console.error("Error searching Graphiti:", error);
+                }
+              } else {
+                console.log("⚠️ No valid name found — skipping Graphiti search.");
+              }
+            }
+
+            // Build readable summaries from the nodes and edges
+            let graphitiContext = "";
+
+            if (graphitiResults) {
+              const nodeSummaries =
+                graphitiResults.nodes
+                  ?.slice(0, 5) // limit to top 5 nodes
+                  .map((node: any) => `- ${node.name}: ${node.summary}`)
+                  .join("\n") || "";
+
+              const edgeFacts =
+                graphitiResults.edges
+                  ?.slice(0, 5)
+                  .map((edge: any) => `- ${edge.fact}`)
+                  .join("\n") || "";
+
+              if (nodeSummaries || edgeFacts) {
+                graphitiContext = `Here are relevant facts about ${first_name || user_id} from the Graphiti knowledge graph:\n\n` +
+                  (nodeSummaries ? `🧠 Entities:\n${nodeSummaries}\n\n` : "") +
+                  (edgeFacts ? `🔗 Relationships:\n${edgeFacts}` : "");
+              }
+            }
+            console.log(graphitiContext)
 
             const systemMessage: SystemMessage = {
               role: "system",
@@ -186,8 +301,15 @@ export class Orchestrator {
                 {
                   type: "text",
                   text: system_prompt,
-                }
-                // TODO: Add inputs from Graphiti
+                },
+                ...(graphitiContext
+                  ? [
+                    {
+                      type: "text" as const,
+                      text: graphitiContext,
+                    },
+                  ]
+                  : []),
               ],
             };
 
@@ -222,7 +344,62 @@ export class Orchestrator {
             }
             // User ask to chat with new Agent within the session
             if (agent_idOverwritten) {
-              // TODO: Fetch from Graphiti
+              let graphitiResults: any = null;
+
+              if (is_bot === false) {
+                const name = first_name?.trim() || username?.trim();
+
+                await sendResponse(
+                  event,
+                  {
+                    type: 'text',
+                    text: `🔍 Retrieving context from previous interactions...`,
+                    // placeholder_message_id will be automatically added if includePlaceholder is true
+                  },
+                  {
+                    includePlaceholder: !!placeholder_message_id
+                  }
+                );
+
+                if (name) {
+                  try {
+                    const searchResponse = await searchGraphiti({ text: name });
+                    graphitiResults = searchResponse?.results || null;
+
+                    const nodeCount = graphitiResults?.nodes?.length || 0;
+                    const edgeCount = graphitiResults?.edges?.length || 0;
+                    console.log(`Graphiti search found ${nodeCount} nodes and ${edgeCount} edges for "${name}".`);
+                  } catch (error) {
+                    console.error("Error searching Graphiti:", error);
+                  }
+                } else {
+                  console.log("⚠️ No valid name found — skipping Graphiti search.");
+                }
+              }
+
+              // Build readable summaries from the nodes and edges
+              let graphitiContext = "";
+
+              if (graphitiResults) {
+                const nodeSummaries =
+                  graphitiResults.nodes
+                    ?.slice(0, 5) // limit to top 5 nodes
+                    .map((node: any) => `- ${node.name}: ${node.summary}`)
+                    .join("\n") || "";
+
+                const edgeFacts =
+                  graphitiResults.edges
+                    ?.slice(0, 5)
+                    .map((edge: any) => `- ${edge.fact}`)
+                    .join("\n") || "";
+
+                if (nodeSummaries || edgeFacts) {
+                  graphitiContext = `Here are relevant facts about ${first_name || user_id} from the Graphiti knowledge graph:\n\n` +
+                    (nodeSummaries ? `🧠 Entities:\n${nodeSummaries}\n\n` : "") +
+                    (edgeFacts ? `🔗 Relationships:\n${edgeFacts}` : "");
+                }
+              }
+              console.log(graphitiContext)
 
               const systemMessage: SystemMessage = {
                 role: "system",
@@ -230,8 +407,15 @@ export class Orchestrator {
                   {
                     type: "text",
                     text: system_prompt,
-                  }
-                  // TODO: Add inputs from Graphiti
+                  },
+                  ...(graphitiContext
+                    ? [
+                      {
+                        type: "text" as const,
+                        text: graphitiContext,
+                      },
+                    ]
+                    : []),
                 ],
               };
               await tursoClient.logConversation({
@@ -345,8 +529,6 @@ export class Orchestrator {
       const sanitizedMessage = sanitizeResponseMessage(responseMessageRaw);
       const responseMessage: AssistantMessage = sanitizedMessage as AssistantMessage;
 
-      console.log("Sanitised LLM Response:\n", responseMessage)
-
       const finishReason = choice.finish_reason;
       const usage = response?.usage;
       const completionTokens = usage.completion_tokens;
@@ -452,6 +634,18 @@ export class Orchestrator {
       }
       // --- Final assistant text ---
       else if (finishReason === 'stop' && responseMessage.content !== null) {
+        await sendResponse(
+          event,
+          {
+            type: 'text',
+            text: `🤔 Thinking it through and preparing your reply...`,
+            // placeholder_message_id will be automatically added if includePlaceholder is true
+          },
+          {
+            includePlaceholder: !!placeholder_message_id
+          }
+        );
+
         finalAssistantText = responseMessage.content;
 
         const outgoingMessages: ResponseMessage[] = [

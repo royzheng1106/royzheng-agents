@@ -9,6 +9,10 @@ interface GraphitiPayload {
   userMessage: string;
 }
 
+interface GraphitiSearchPayload {
+  text: string;
+}
+
 /**
  * Sends an episode creation request to the Graphiti queue API.
  */
@@ -55,4 +59,29 @@ export async function sendGraphitiEpisode({
   }
 
   console.log(`✅ Graphiti episode queued: ${sessionId}_${messageCount}`);
+}
+
+/**
+ * Searches the Graphiti API for matching episodes or content.
+ */
+export async function searchGraphiti({ text }: GraphitiSearchPayload): Promise<any> {
+  const searchUrl = "https://royzheng-graphiti-lb.hf.space/api/search";
+
+  const response = await fetch(searchUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${CONFIG.GRAPHITI_API_KEY}`,
+    },
+    body: JSON.stringify({ text }),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Graphiti search failed: ${response.status} - ${errText}`);
+  }
+
+  const result = await response.json();
+  console.log("🔍 Graphiti search result:", result);
+  return result;
 }
