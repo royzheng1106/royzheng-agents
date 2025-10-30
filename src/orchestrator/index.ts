@@ -645,7 +645,8 @@ export class Orchestrator {
             // placeholder_message_id will be automatically added if includePlaceholder is true
           },
           {
-            includePlaceholder: !!placeholder_message_id
+            includePlaceholder: !!placeholder_message_id,
+            editMessage: true
           }
         );
 
