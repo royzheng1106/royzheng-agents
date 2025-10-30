@@ -10,14 +10,20 @@ import { CONFIG } from '../utils/config.js';
 export async function sendResponse(
   event: Event,
   messages: ResponseMessage | ResponseMessage[],
-  options?: { includePlaceholder?: boolean }
+  options?: {
+    includePlaceholder?: boolean;
+    editMessage?: boolean;
+  }
 ) {
   // Normalize to array
   const msgs: ResponseMessage[] = Array.isArray(messages) ? messages : [messages];
 
+  const hasPlaceholder =
+    options?.includePlaceholder && event.metadata?.placeholder_message_id != null;
+
   // Add placeholder_message_id to the first message if required
-  if (options?.includePlaceholder && event.metadata?.placeholder_message_id != null) {
-    msgs[0].placeholder_message_id = event.metadata.placeholder_message_id;
+  if (hasPlaceholder) {
+    msgs[0].placeholder_message_id = event.metadata!.placeholder_message_id;
   }
 
   const payload: Response = {
@@ -32,6 +38,7 @@ export async function sendResponse(
     metadata: {
       source: event.sender?.source,
       agent_id: event.agent_id,
+      ...(hasPlaceholder && options?.editMessage ? { edit_message: true } : {}),
     },
   };
 
@@ -55,50 +62,54 @@ export async function sendResponse(
   }
 }
 
-/**
- * Send a background (intermediate/tool) message.
- * - Always italicized
- * - includePlaceholder: include placeholder_message_id in the first message if present
- */
-export async function sendBackgroundMessage(
-  event: Event,
-  content: string,
-  options?: { includePlaceholder?: boolean }
-) {
-  const formatted = `_${content}_`; // always italic
+// /**
+//  * Send a background (intermediate/tool) message.
+//  * - Always italicized
+//  * - includePlaceholder: include placeholder_message_id in the first message if present
+//  */
+// export async function sendBackgroundMessage(
+//   event: Event,
+//   content: string,
+//   options?: {
+//     includePlaceholder?: boolean;
+//     editMessage?: boolean;
+//   }
+// ) {
+//   const formatted = `_${content}_`; // always italic
 
-  const message: any = { type: 'text', content: formatted };
-  if (options?.includePlaceholder && event.metadata?.placeholder_message_id != null) {
-    message.placeholder_message_id = event.metadata.placeholder_message_id;
-  }
+//   const message: any = { type: 'text', content: formatted };
+//   if (options?.includePlaceholder && event.metadata?.placeholder_message_id != null) {
+//     message.placeholder_message_id = event.metadata.placeholder_message_id;
+//   }
 
-  const payload: Response = {
-    id: event.id,
-    recipients: (event.recipients || []).map((r: any): ResponseRecipient => ({
-      channel: r.channel,
-      id: r.id ?? undefined,
-      user_id: r.user_id ?? undefined,
-      chat_id: r.chat_id ?? undefined,
-    })),
-    messages: [message],
-    metadata: {
-      source: event.sender?.source,
-      agent_id: event.agent_id,
-    },
-  };
-  console.log(JSON.stringify(payload));
-  try {
-    const res = await fetch('https://royzheng-integrations.vercel.app/api/send-response', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': CONFIG.INT_API_KEY!,
-      },
-      body: JSON.stringify(payload),
-    });
+//   const payload: Response = {
+//     id: event.id,
+//     recipients: (event.recipients || []).map((r: any): ResponseRecipient => ({
+//       channel: r.channel,
+//       id: r.id ?? undefined,
+//       user_id: r.user_id ?? undefined,
+//       chat_id: r.chat_id ?? undefined,
+//     })),
+//     messages: [message],
+//     metadata: {
+//       source: event.sender?.source,
+//       agent_id: event.agent_id,
+//     },
+//   };
 
-    if (!res.ok) console.error(`❌ Failed to send background message: ${res.statusText}`);
-  } catch (err) {
-    console.error('❌ Network error while sending background message:', err);
-  }
-}
+//   console.log(JSON.stringify(payload));
+//   try {
+//     const res = await fetch('https://royzheng-integrations.vercel.app/api/send-response', {
+//       method: 'POST',
+//       headers: {
+//         'Content-Type': 'application/json',
+//         'x-api-key': CONFIG.INT_API_KEY!,
+//       },
+//       body: JSON.stringify(payload),
+//     });
+
+//     if (!res.ok) console.error(`❌ Failed to send background message: ${res.statusText}`);
+//   } catch (err) {
+//     console.error('❌ Network error while sending background message:', err);
+//   }
+// }
