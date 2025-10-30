@@ -39,7 +39,7 @@ router.post("/", async (req, res) => {
         const db = await getDb();
         const payload: Agent = req.body;
 
-        const requiredFields: (keyof Agent)[] = ["agent_id", "name", "systemPrompt", "model"];
+        const requiredFields: (keyof Agent)[] = ["name", "description", "gemini_voice", "system_prompt", "model", "mcp_servers"];
         for (const field of requiredFields) {
             if (!payload[field]) {
                 return res.status(400).json({ ok: false, error: `Missing required field: ${field}` });

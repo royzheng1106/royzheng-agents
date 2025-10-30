@@ -186,13 +186,11 @@ export class Orchestrator {
                 .join("\n") || "";
 
             if (nodeSummaries || edgeFacts) {
-              graphitiContext = `Here are relevant facts about ${first_name || user_id} from the Graphiti knowledge graph:\n\n` +
+              graphitiContext = `Here are relevant facts about ${first_name || user_id} from the previous conversations:\n\n` +
                 (nodeSummaries ? `🧠 Entities:\n${nodeSummaries}\n\n` : "") +
                 (edgeFacts ? `🔗 Relationships:\n${edgeFacts}` : "");
             }
           }
-          console.log(graphitiContext)
-
           const systemMessage: SystemMessage = {
             role: "system",
             content: [
@@ -210,6 +208,8 @@ export class Orchestrator {
                 : []),
             ],
           };
+
+          console.log(JSON.stringify(systemMessage))
 
           await tursoClient.logConversation({
             model,
