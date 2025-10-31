@@ -34,28 +34,25 @@ export class LLMClient {
    * Returns the full JSON response from the model.
    */
   async getLLMResponse(
-{ model, conversation, tools }: {
-  model: string; conversation: Conversation; tools?: Array<{
-    name: string;
-    description: string;
-    parameters: Record<string, any>;
-  }>;
-}  ): Promise<any> {
-  
+    { model, conversation, tools }: {
+      model: string;
+      conversation: Conversation;
+      tools?: Array<{
+        name: string;
+        description: string;
+        parameters: Record<string, any>;
+      }>;
+    }
+  ): Promise<any> {
     const nowString = getCurrentDateTimeSG();
     const timeSystemMessage: SystemMessage = {
       role: "system",
       content: [
-        {
-          type: "text",
-          text: `Current time in Singapore: ${nowString}`,
-        },
+        { type: "text", text: `Current time in Singapore: ${nowString}` }
       ],
     };
 
-    // Append to the conversation
     const conversationWithTime = [...conversation, timeSystemMessage];
-
     const payload: Record<string, any> = { model, messages: conversationWithTime };
 
     if (tools?.length) {
@@ -63,22 +60,51 @@ export class LLMClient {
       console.log(`[LLMClient] Including ${tools.length} tools`);
     }
 
-    const response = await fetch(`${this.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer " + this.apiKey,
-      },
-      body: JSON.stringify(payload),
-    });
+    const maxRetries = 3;
+    let attempt = 0;
+    let lastError: Error | null = null;
 
-    if (!response.ok) {
-      throw new Error(
-        `[LLMClient] Request failed: ${response.status} ${response.statusText}`
-      );
+    while (attempt < maxRetries) {
+      attempt++;
+      try {
+        console.log(`[LLMClient] Attempt ${attempt}/${maxRetries} → sending request to ${this.baseUrl}/chat/completions`);
+
+        const response = await fetch(`${this.baseUrl}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + this.apiKey,
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+          throw new Error(`[LLMClient] Request failed: ${response.status} ${response.statusText}`);
+        }
+
+        const data = await response.json();
+
+        // ✅ Verify response validity
+        if (!data?.choices?.length || !data.choices[0]?.message) {
+          throw new Error(`[LLMClient] Invalid LLM response: ${JSON.stringify(data)}`);
+        }
+
+        // ✅ Success → return result
+        return data;
+
+      } catch (err: any) {
+        lastError = err;
+        console.warn(`⚠️ [LLMClient] Attempt ${attempt} failed: ${err.message}`);
+
+        // Exponential backoff delay before retry
+        const delayMs = 500 * Math.pow(2, attempt - 1);
+        await new Promise(res => setTimeout(res, delayMs));
+      }
     }
 
-    return await response.json();
+    // ❌ After max retries, throw
+    console.error(`[LLMClient] All ${maxRetries} attempts failed.`);
+    throw lastError || new Error("LLM request failed after retries");
   }
 
   /**

@@ -524,16 +524,30 @@ export class Orchestrator {
     let llmTools = allTools.filter(tool => allowedTools.includes(tool.name));
 
     // --- Add built-in Google tools if specified ---
-    const googleToolMap: Record<string, any> = {
-      "google_search": { googleSearch: {} },
-      "google_maps": { googleMaps: {} },
-      "google_url_context": { urlContext: {} }
+    const googleToolMap: Record<string, (event: Event) => any> = {
+      "google_search": () => ({ googleSearch: {} }),
+      "google_maps": (event: Event) => {
+        const base: any = { googleMaps: {} };
+        const loc = event.metadata?.location;
+        if (loc?.latitude != null && loc?.longitude != null) {
+          base.googleMaps.toolConfig = {
+            retrievalConfig: {
+              latLng: {
+                latitude: loc.latitude,
+                longitude: loc.longitude,
+              },
+              ...(loc.radius ? { radius: loc.radius } : {}),
+            },
+          };
+        }
+        return base;
+      },
+      "google_url_context": () => ({ urlContext: {} })
     };
-
     // If allowed_tools contains any of these names, append the corresponding entries
     const extraTools = allowedTools
       .filter(name => googleToolMap[name]) // keep only recognized google tools
-      .map(name => googleToolMap[name]);
+      .map(name => googleToolMap[name](event));
 
     if (extraTools.length > 0) {
       console.log("🧩 Adding Google tools:", extraTools);
