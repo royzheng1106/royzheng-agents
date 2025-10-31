@@ -1,4 +1,6 @@
 import { CONFIG } from "../utils/config.js";
+import { getCurrentDateTimeSG } from "../utils/getCurrentDateTimeSG.js"; // 👈 import your util
+
 
 /**
  * Message Types
@@ -31,16 +33,30 @@ export class LLMClient {
    * Send a full conversation to LiteLLM.
    * Returns the full JSON response from the model.
    */
-  async sendConversation(
-    model: string,
-    conversation: Conversation,
-    tools?: Array<{
-      name: string;
-      description: string;
-      parameters: Record<string, any>;
-    }>
-  ): Promise<any> {
-    const payload: Record<string, any> = { model, messages: conversation };
+  async getResponse(
+{ model, conversation, tools }: {
+  model: string; conversation: Conversation; tools?: Array<{
+    name: string;
+    description: string;
+    parameters: Record<string, any>;
+  }>;
+}  ): Promise<any> {
+  
+    const nowString = getCurrentDateTimeSG();
+    const timeSystemMessage: SystemMessage = {
+      role: "system",
+      content: [
+        {
+          type: "text",
+          text: `Current time in Singapore: ${nowString}`,
+        },
+      ],
+    };
+
+    // Append to the conversation
+    const conversationWithTime = [...conversation, timeSystemMessage];
+
+    const payload: Record<string, any> = { model, messages: conversationWithTime };
 
     if (tools?.length) {
       payload.tools = tools;

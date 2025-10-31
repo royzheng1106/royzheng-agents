@@ -524,7 +524,7 @@ export class Orchestrator {
     const llmTools = allTools.filter(tool => allowedTools.includes(tool.name));
 
     while (true) {
-      const response: any = await this.llm.sendConversation(model, conversation, llmTools);
+      const response: any = await this.llm.getResponse({ model, conversation, tools: llmTools });
 
       const choice = response?.choices?.[0];
       const responseMessageRaw = choice.message;
