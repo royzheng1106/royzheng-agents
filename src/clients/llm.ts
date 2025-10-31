@@ -33,7 +33,7 @@ export class LLMClient {
    * Send a full conversation to LiteLLM.
    * Returns the full JSON response from the model.
    */
-  async getResponse(
+  async getLLMResponse(
 { model, conversation, tools }: {
   model: string; conversation: Conversation; tools?: Array<{
     name: string;

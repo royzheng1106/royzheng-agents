@@ -521,10 +521,27 @@ export class Orchestrator {
     const allowedTools = agent.config.mcp_servers?.flatMap(server => server.allowed_tools) ?? [];
 
     // Filter the MCP tool list based on allowed tools
-    const llmTools = allTools.filter(tool => allowedTools.includes(tool.name));
+    let llmTools = allTools.filter(tool => allowedTools.includes(tool.name));
+
+    // --- Add built-in Google tools if specified ---
+    const googleToolMap: Record<string, any> = {
+      "google_search": { googleSearch: {} },
+      "google_maps": { googleMaps: {} },
+      "google_url_context": { urlContext: {} }
+    };
+
+    // If allowed_tools contains any of these names, append the corresponding entries
+    const extraTools = allowedTools
+      .filter(name => googleToolMap[name]) // keep only recognized google tools
+      .map(name => googleToolMap[name]);
+
+    if (extraTools.length > 0) {
+      console.log("🧩 Adding Google tools:", extraTools);
+      llmTools = [...llmTools, ...extraTools];
+    }
 
     while (true) {
-      const response: any = await this.llm.getResponse({ model, conversation, tools: llmTools });
+      const response: any = await this.llm.getLLMResponse({ model, conversation, tools: llmTools });
 
       const choice = response?.choices?.[0];
       const responseMessageRaw = choice.message;
@@ -637,18 +654,20 @@ export class Orchestrator {
       }
       // --- Final assistant text ---
       else if (finishReason === 'stop' && responseMessage.content !== null) {
-        await sendResponse(
-          event,
-          {
-            type: 'text',
-            text: `🤔 Thinking it through and preparing your reply...`,
-            // placeholder_message_id will be automatically added if includePlaceholder is true
-          },
-          {
-            includePlaceholder: !!placeholder_message_id,
-            editMessage: true
-          }
-        );
+        if (is_bot === false) {
+          await sendResponse(
+            event,
+            {
+              type: 'text',
+              text: `🤔 Thinking it through and preparing your reply...`,
+              // placeholder_message_id will be automatically added if includePlaceholder is true
+            },
+            {
+              includePlaceholder: !!placeholder_message_id,
+              editMessage: true
+            }
+          );
+        }
 
         finalAssistantText = responseMessage.content;
 
