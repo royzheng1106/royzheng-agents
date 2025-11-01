@@ -21,6 +21,15 @@ interface UntypedDbRow {
 export function convertEventToUserMessage(event: Event): UserMessage {
   const content: Content[] = [];
 
+  const location = event.metadata?.location;
+  if (location?.geocode_information) {
+    const locationText = `I am currently at:\n${location.geocode_information}`;
+    content.push({
+      type: "text",
+      text: locationText,
+    });
+  }
+
   for (const msg of event.messages) {
     // Add text if non-empty
     if (msg.text?.trim()) {
@@ -542,7 +551,7 @@ export class Orchestrator {
     while (true) {
       console.log(`Conversation: ${JSON.stringify(conversation)}`);
       const response: any = await this.llm.getLLMResponse({ model, conversation, tools: llmTools });
-      console.log(`Conversation: ${JSON.stringify(response)}`);
+      console.log(`Response: ${JSON.stringify(response)}`);
       const choice = response?.choices?.[0];
       const responseMessageRaw = choice.message;
       const sanitizedMessage = sanitizeResponseMessage(responseMessageRaw);
