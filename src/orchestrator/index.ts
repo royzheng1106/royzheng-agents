@@ -220,8 +220,6 @@ export class Orchestrator {
             ],
           };
 
-          console.log(JSON.stringify(systemMessage))
-
           await tursoClient.logConversation({
             model,
             role: 'system',
@@ -302,7 +300,8 @@ export class Orchestrator {
               if (nodeSummaries || edgeFacts) {
                 graphitiContext = `Here are relevant facts about ${first_name || user_id} from the Graphiti knowledge graph:\n\n` +
                   (nodeSummaries ? `🧠 Entities:\n${nodeSummaries}\n\n` : "") +
-                  (edgeFacts ? `🔗 Relationships:\n${edgeFacts}` : "");
+                  (edgeFacts ? `🔗 Relationships:\n${edgeFacts}\n\n` : "") +
+                  (`If there are any location information provided, it is probably outdated and you should confirm the user's location if it is required.`);
               }
             }
 
@@ -408,10 +407,10 @@ export class Orchestrator {
                 if (nodeSummaries || edgeFacts) {
                   graphitiContext = `Here are relevant facts about ${first_name || user_id} from the Graphiti knowledge graph:\n\n` +
                     (nodeSummaries ? `🧠 Entities:\n${nodeSummaries}\n\n` : "") +
-                    (edgeFacts ? `🔗 Relationships:\n${edgeFacts}` : "");
+                    (edgeFacts ? `🔗 Relationships:\n${edgeFacts}\n\n` : "") +
+                    (`If there are any location information provided, it is probably outdated and you should confirm the user's location if it is required.`);
                 }
               }
-              console.log(graphitiContext)
 
               const systemMessage: SystemMessage = {
                 role: "system",
@@ -550,9 +549,9 @@ export class Orchestrator {
     }
 
     while (true) {
-      console.log(`Conversation: ${JSON.stringify(conversation)}`);
+      console.log(`========\nConversation to LLM\n: ${JSON.stringify(conversation)}`);
       const response: any = await this.llm.getLLMResponse({ model, conversation, tools: llmTools });
-      console.log(`Response: ${JSON.stringify(response)}`);
+      console.log(`========\nResponse from LLM\n: ${JSON.stringify(response)}`);
       const choice = response?.choices?.[0];
       const responseMessageRaw = choice.message;
       const sanitizedMessage = sanitizeResponseMessage(responseMessageRaw);
@@ -714,30 +713,30 @@ export class Orchestrator {
           firstOutgoingMessageSent = true;
 
           // -- Graphiti --
-          // if (is_bot === false) {
-          //   let message: string = "";
-          //   if (hasAudioInput) {
-          //     try {
-          //       const audioContent = userMessage.content.find(c => c.type === 'input_audio')?.input_audio;
+          if (is_bot === false) {
+            let message: string = "";
+            if (hasAudioInput) {
+              try {
+                const audioContent = userMessage.content.find(c => c.type === 'input_audio')?.input_audio;
 
-          //       if (audioContent?.data) {
-          //         message = await this.llm.audioToText(audioContent.data, audioContent.format);
-          //       }
-          //     } catch (err) {
-          //       console.error('❌ STT failed, not sending to Graphiti', err);
-          //     }
-          //   } else {
-          //     message = userMessage.content.find(c => c.type === 'text')?.text ?? "";
-          //   }
-          //   await sendGraphitiEpisode({
-          //     sessionId: sessionId,
-          //     messageCount: conversation.length,
-          //     firstName: first_name,
-          //     username: username,
-          //     agentId: agent_id,
-          //     userMessage: message,
-          //   });
-          // }
+                if (audioContent?.data) {
+                  message = await this.llm.audioToText(audioContent.data, audioContent.format);
+                }
+              } catch (err) {
+                console.error('❌ STT failed, not sending to Graphiti', err);
+              }
+            } else {
+              message = userMessage.content.find(c => c.type === 'text')?.text ?? "";
+            }
+            await sendGraphitiEpisode({
+              sessionId: sessionId,
+              messageCount: conversation.length,
+              firstName: first_name,
+              username: username,
+              agentId: agent_id,
+              userMessage: message,
+            });
+          }
           return
         } else {
           return {
