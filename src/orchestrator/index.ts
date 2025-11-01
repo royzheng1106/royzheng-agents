@@ -703,30 +703,30 @@ export class Orchestrator {
           firstOutgoingMessageSent = true;
 
           // -- Graphiti --
-          if (is_bot === false) {
-            let message: string = "";
-            if (hasAudioInput) {
-              try {
-                const audioContent = userMessage.content.find(c => c.type === 'input_audio')?.input_audio;
+          // if (is_bot === false) {
+          //   let message: string = "";
+          //   if (hasAudioInput) {
+          //     try {
+          //       const audioContent = userMessage.content.find(c => c.type === 'input_audio')?.input_audio;
 
-                if (audioContent?.data) {
-                  message = await this.llm.audioToText(audioContent.data, audioContent.format);
-                }
-              } catch (err) {
-                console.error('❌ STT failed, not sending to Graphiti', err);
-              }
-            } else {
-              message = userMessage.content.find(c => c.type === 'text')?.text ?? "";
-            }
-            await sendGraphitiEpisode({
-              sessionId: sessionId,
-              messageCount: conversation.length,
-              firstName: first_name,
-              username: username,
-              agentId: agent_id,
-              userMessage: message,
-            });
-          }
+          //       if (audioContent?.data) {
+          //         message = await this.llm.audioToText(audioContent.data, audioContent.format);
+          //       }
+          //     } catch (err) {
+          //       console.error('❌ STT failed, not sending to Graphiti', err);
+          //     }
+          //   } else {
+          //     message = userMessage.content.find(c => c.type === 'text')?.text ?? "";
+          //   }
+          //   await sendGraphitiEpisode({
+          //     sessionId: sessionId,
+          //     messageCount: conversation.length,
+          //     firstName: first_name,
+          //     username: username,
+          //     agentId: agent_id,
+          //     userMessage: message,
+          //   });
+          // }
           return
         } else {
           return {
