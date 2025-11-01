@@ -540,8 +540,9 @@ export class Orchestrator {
     }
 
     while (true) {
+      console.log(`Conversation: ${JSON.stringify(conversation)}`);
       const response: any = await this.llm.getLLMResponse({ model, conversation, tools: llmTools });
-      console.log(JSON.stringify(response));
+      console.log(`Conversation: ${JSON.stringify(response)}`);
       const choice = response?.choices?.[0];
       const responseMessageRaw = choice.message;
       const sanitizedMessage = sanitizeResponseMessage(responseMessageRaw);
