@@ -526,22 +526,7 @@ export class Orchestrator {
     // --- Add built-in Google tools if specified ---
     const googleToolMap: Record<string, (event: Event) => any> = {
       "google_search": () => ({ googleSearch: {} }),
-      "google_maps": (event: Event) => {
-        const base: any = { googleMaps: {} };
-        const loc = event.metadata?.location;
-        if (loc?.latitude != null && loc?.longitude != null) {
-          base.googleMaps.toolConfig = {
-            retrievalConfig: {
-              latLng: {
-                latitude: loc.latitude,
-                longitude: loc.longitude,
-              },
-              ...(loc.radius ? { radius: loc.radius } : {}),
-            },
-          };
-        }
-        return base;
-      },
+      "google_maps": () => ({ googleMaps: {} }),
       "google_url_context": () => ({ urlContext: {} })
     };
     // If allowed_tools contains any of these names, append the corresponding entries
