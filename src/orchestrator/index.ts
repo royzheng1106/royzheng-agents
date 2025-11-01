@@ -198,7 +198,8 @@ export class Orchestrator {
             if (nodeSummaries || edgeFacts) {
               graphitiContext = `Here are relevant facts about ${first_name || user_id} from the previous conversations:\n\n` +
                 (nodeSummaries ? `🧠 Entities:\n${nodeSummaries}\n\n` : "") +
-                (edgeFacts ? `🔗 Relationships:\n${edgeFacts}` : "");
+                (edgeFacts ? `🔗 Relationships:\n${edgeFacts}\n\n` : "") +
+                (`If there are any location information provided, it is probably outdated and you should confirm the user's location if it is required.`);
             }
           }
           const systemMessage: SystemMessage = {
