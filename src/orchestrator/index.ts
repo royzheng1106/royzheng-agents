@@ -76,7 +76,7 @@ export class Orchestrator {
   constructor(private agentFactory: AgentFactory) {
     this.llm = new LLMClient();
 
-    let baseUrlCore = "https://royzheng-core-lb.hf.space";
+    let baseUrlCore = "https://royzheng-core.hf.space";
 
     this.mcpClient = new MCPClient(
       `${baseUrlCore}/api/mcp`,

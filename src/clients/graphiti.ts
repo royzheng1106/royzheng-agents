@@ -29,7 +29,7 @@ export async function sendGraphitiEpisode({
   const displayName = username || firstName || "User";
 
   const data = {
-    url: "https://royzheng-graphiti.hf.space/api/add-episode",
+    url: "https://royzheng-graphiti-03.hf.space/api/add-episode",
     headers: {
       Authorization: `Bearer ${CONFIG.GRAPHITI_API_KEY}`,
       "Content-Type": "application/json",
@@ -65,7 +65,7 @@ export async function sendGraphitiEpisode({
  * Searches the Graphiti API for matching episodes or content.
  */
 export async function searchGraphiti({ text }: GraphitiSearchPayload): Promise<any> {
-  const searchUrl = "https://royzheng-graphiti-lb.hf.space/api/search";
+  const searchUrl = "https://royzheng-graphiti.hf.space/api/search";
 
   const response = await fetch(searchUrl, {
     method: "POST",

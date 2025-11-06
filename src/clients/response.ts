@@ -45,7 +45,7 @@ export async function sendResponse(
   console.log('Sending payload:', JSON.stringify(payload, null, 2));
 
   try {
-    const res = await fetch('https://royzheng-integrations-lb.hf.space/api/send-response', {
+    const res = await fetch('https://royzheng-integrations.hf.space/api/send-response', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
