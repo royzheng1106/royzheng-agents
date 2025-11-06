@@ -51,6 +51,7 @@ function requireApiKey(req: express.Request, res: express.Response, next: expres
 
 // Health check
 app.get('/', (_req, res) => res.status(200).send('💻 royzheng-agents running'));
+app.get('/_health', (_req, res) => res.status(200).send('💻 royzheng-agents running'));
 
 // Initialize database + orchestrator
 const agentFactory = new AgentFactory();
