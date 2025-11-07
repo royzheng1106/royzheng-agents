@@ -614,12 +614,26 @@ export class Orchestrator {
           } catch (err) {
             console.error(`❌ Failed to parse tool arguments for ${name}:`, argsRaw);
           }
+
+          // --- ARGUMENT CLEANUP LOGIC ---
+          const cleanedArgs: Record<string, any> = {};
+          for (const key in parsedArgs) {
+            const value = parsedArgs[key];
+            // Only include keys if the value is not undefined, not null, and not an empty string
+            if (value !== undefined && value !== null && value !== '') {
+              cleanedArgs[key] = value;
+            }
+          }
+          console.log(`🧼 Cleaned tool arguments for ${name}: ${JSON.stringify(cleanedArgs)}`);
+          // --- END ARGUMENT CLEANUP LOGIC ---
+
           // --- Call MCP Tool ---
           let toolResult: any;
           try {
+            // Pass the cleanedArgs to the tool client
             toolResult = await this.mcpClient.callTool({
               name,
-              arguments: parsedArgs,
+              arguments: cleanedArgs, 
             });
             console.log(`🧰 Tool '${name}' executed successfully`, toolResult);
           } catch (err) {

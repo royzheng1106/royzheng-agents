@@ -79,7 +79,16 @@ export class LLMClient {
         });
 
         if (!response.ok) {
-          throw new Error(`[LLMClient] Request failed: ${response.status} ${response.statusText}`);
+          // If response status is bad, throw an Error with details
+          const errorDetail = `[LLMClient] Request failed: ${response.status} ${response.statusText}`;
+          // Try to get more detail from the response body if available (optional but helpful)
+          try {
+            const errorBody = await response.json();
+            throw new Error(`${errorDetail} - Body: ${JSON.stringify(errorBody)}`);
+          } catch {
+             // If JSON parsing fails, just throw the basic error
+            throw new Error(errorDetail);
+          }
         }
 
         const data = await response.json();
