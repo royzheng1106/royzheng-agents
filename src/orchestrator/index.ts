@@ -759,7 +759,7 @@ export class Orchestrator {
             messages: outgoingMessages,
             metadata: {
               agent_id,
-              session_id: sessionId // The variable 'sessionId' (value) is assigned to the key 'session_id'
+              session_id: sessionId
             }
           };
         }
