@@ -110,7 +110,8 @@ export class Orchestrator {
 
     // 2. Metadata
     const placeholder_message_id = event.metadata?.placeholder_message_id != null ? Number(event.metadata?.placeholder_message_id) : undefined;
-    let sessionId = event.metadata?.sessionId != null ? String(event.metadata?.sessionId) : undefined;
+    // FIX: Changed 'sessionId' to 'session_id' to match expected input/output structure
+    let sessionId = event.metadata?.session_id != null ? String(event.metadata?.session_id) : undefined; 
 
     // 3. Messages
     for (const message of event.messages) {
@@ -744,7 +745,7 @@ export class Orchestrator {
             messages: outgoingMessages,
             metadata: {
               agent_id,
-              session_id: sessionId
+              session_id: sessionId // The variable 'sessionId' (value) is assigned to the key 'session_id'
             }
           };
         }
