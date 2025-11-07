@@ -744,7 +744,7 @@ export class Orchestrator {
             messages: outgoingMessages,
             metadata: {
               agent_id,
-              sessionId
+              session_id: sessionId
             }
           };
         }
