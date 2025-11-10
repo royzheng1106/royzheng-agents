@@ -110,8 +110,31 @@ export class Orchestrator {
 
     // 2. Metadata
     const placeholder_message_id = event.metadata?.placeholder_message_id != null ? Number(event.metadata?.placeholder_message_id) : undefined;
-    // FIX: Changed 'sessionId' to 'session_id' to match expected input/output structure
-    let sessionId = event.metadata?.session_id != null ? String(event.metadata?.session_id) : undefined; 
+    let sessionId = event.metadata?.session_id != null ? String(event.metadata?.session_id) : undefined;
+    let metadataContext = "";
+    const rawContext = event.metadata?.context;
+    if (rawContext) {
+      if (typeof rawContext === 'string') {
+        // Case 1: The context is a simple string.
+        metadataContext = "Context:\n\n" +
+          rawContext;
+      } else if (typeof rawContext === 'object' && rawContext !== null) {
+        // Case 2 (Previous assumption): The context is an object map.
+        try {
+          const contextEntries = Object.entries(rawContext);
+          if (contextEntries.length > 0) {
+            metadataContext = "Context:\n\n" +
+              contextEntries
+                .map(([key, value]) => `- **${key.replace(/_/g, ' ')}**: ${value}`)
+                .join("\n");
+          }
+        } catch (error) {
+          console.error("Error processing event.metadata.context object:", error);
+        }
+      } else {
+        console.warn(`event.metadata.context found, but not a string or object: ${typeof rawContext}`);
+      }
+    }
 
     // 3. Messages
     for (const message of event.messages) {
@@ -218,9 +241,17 @@ export class Orchestrator {
                   },
                 ]
                 : []),
+              ...(metadataContext
+                ? [
+                  {
+                    type: "text" as const,
+                    text: metadataContext,
+                  },
+                ]
+                : []),
             ],
           };
-
+          console.log(JSON.stringify(systemMessage));
           await tursoClient.logConversation({
             model,
             role: 'system',
@@ -318,6 +349,14 @@ export class Orchestrator {
                     {
                       type: "text" as const,
                       text: graphitiContext,
+                    },
+                  ]
+                  : []),
+                ...(metadataContext
+                  ? [
+                    {
+                      type: "text" as const,
+                      text: metadataContext,
                     },
                   ]
                   : []),
@@ -428,6 +467,14 @@ export class Orchestrator {
                       },
                     ]
                     : []),
+                  ...(metadataContext
+                    ? [
+                      {
+                        type: "text" as const,
+                        text: metadataContext,
+                      },
+                    ]
+                    : []),
                 ],
               };
               await tursoClient.logConversation({
@@ -453,7 +500,15 @@ export class Orchestrator {
             {
               type: "text",
               text: system_prompt,
-            }
+            },
+            ...(metadataContext
+              ? [
+                {
+                  type: "text" as const,
+                  text: metadataContext,
+                },
+              ]
+              : []),
           ],
         };
         await tursoClient.logConversation({
@@ -474,7 +529,15 @@ export class Orchestrator {
               {
                 type: "text",
                 text: system_prompt,
-              }
+              },
+              ...(metadataContext
+                ? [
+                  {
+                    type: "text" as const,
+                    text: metadataContext,
+                  },
+                ]
+                : []),
             ],
           };
           await tursoClient.logConversation({
@@ -633,7 +696,7 @@ export class Orchestrator {
             // Pass the cleanedArgs to the tool client
             toolResult = await this.mcpClient.callTool({
               name,
-              arguments: cleanedArgs, 
+              arguments: cleanedArgs,
             });
             console.log(`🧰 Tool '${name}' executed successfully`, toolResult);
           } catch (err) {
