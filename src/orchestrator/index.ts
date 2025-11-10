@@ -93,11 +93,9 @@ export class Orchestrator {
     const conversation: Conversation = [];
 
     // -- Unpack Event --
-    // 1. Sender
     if (!event.agent_id) throw new Error('No agent specified');
     let agent_id = event.agent_id;
 
-    // 2. Sender
     const source = event.sender?.source != null ? String(event.sender.source) : undefined;
     const is_bot = event.sender?.source != null ? Boolean(event.sender.is_bot) : undefined;
     const id = event.sender?.id != null ? String(event.sender.id) : undefined;
@@ -107,6 +105,21 @@ export class Orchestrator {
     const first_name = event.sender?.first_name != null ? String(event.sender.first_name) : undefined;
     const last_name = event.sender?.last_name != null ? String(event.sender.last_name) : undefined;
     const username = event.sender?.username != null ? String(event.sender.username) : undefined;
+
+    let userInfoContext = "";
+    if (user_id) { // Only proceed if user_id is defined
+      let info = [];
+      if (user_id) info.push(`- **User ID**: ${user_id}`);
+      if (chat_id) info.push(`- **Chat ID**: ${chat_id}`);
+      if (first_name || last_name) {
+        info.push(`- **Name**: ${first_name || ''} ${last_name || ''}`.trim());
+      }
+      if (username) info.push(`- **Username**: @${username}`);
+
+      if (info.length > 0) {
+        userInfoContext = "Current User Information:\n" + info.join('\n');
+      }
+    }
 
     // 2. Metadata
     const placeholder_message_id = event.metadata?.placeholder_message_id != null ? Number(event.metadata?.placeholder_message_id) : undefined;
@@ -233,6 +246,14 @@ export class Orchestrator {
                 type: "text",
                 text: system_prompt,
               },
+              ...(userInfoContext
+                ? [
+                  {
+                    type: "text" as const,
+                    text: userInfoContext,
+                  },
+                ]
+                : []),
               ...(graphitiContext
                 ? [
                   {
@@ -251,7 +272,6 @@ export class Orchestrator {
                 : []),
             ],
           };
-          console.log(JSON.stringify(systemMessage));
           await tursoClient.logConversation({
             model,
             role: 'system',
@@ -344,6 +364,14 @@ export class Orchestrator {
                   type: "text",
                   text: system_prompt,
                 },
+                ...(userInfoContext
+                  ? [
+                    {
+                      type: "text" as const,
+                      text: userInfoContext,
+                    },
+                  ]
+                  : []),
                 ...(graphitiContext
                   ? [
                     {
@@ -459,6 +487,14 @@ export class Orchestrator {
                     type: "text",
                     text: system_prompt,
                   },
+                  ...(userInfoContext
+                    ? [
+                      {
+                        type: "text" as const,
+                        text: userInfoContext,
+                      },
+                    ]
+                    : []),
                   ...(graphitiContext
                     ? [
                       {
