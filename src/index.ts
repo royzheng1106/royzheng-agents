@@ -1,3 +1,5 @@
+import './utils/instrumentation.js';
+
 import express from 'express';
 import type { Event } from './models/Event.js';
 import { CONFIG } from './utils/config.js';
@@ -6,6 +8,7 @@ import { Orchestrator } from './orchestrator/index.js';
 import { client as mongoClient } from './clients/mongodb.js';
 import agentsRouter from "./agents/index.js";
 import { tursoClient } from './clients/turso.js';
+import { trace, context, SpanStatusCode } from '@opentelemetry/api';
 
 const IS_VERCEL = process.env.VERCEL === '1';
 
@@ -47,7 +50,7 @@ function requireApiKey(req: express.Request, res: express.Response, next: expres
   next();
 }
 
-
+const tracer = trace.getTracer('agents-service');
 
 // Health check
 app.get('/', (_req, res) => res.status(200).send('💻 royzheng-agents running'));
@@ -88,54 +91,70 @@ function validateEvent(event: Event): string | null {
  * Main events endpoint
  */
 app.post('/api/events', requireApiKey, async (req, res) => {
+  const currentSpan = trace.getActiveSpan();
   const event: Event = req.body;
 
   const validationError = validateEvent(event);
   if (validationError) {
+    currentSpan?.recordException(new Error(validationError));
+    currentSpan?.setStatus({ code: SpanStatusCode.ERROR, message: validationError });
     return res.status(400).json({ ok: false, error: validationError });
   }
-
+  if (currentSpan) {
+    currentSpan.setAttribute("event.id", event.id);
+    currentSpan.setAttribute("event.source", event.sender?.source || "unknown");
+  }
   console.log(`📩 Received event: ${JSON.stringify(event)}`);
 
-  try {
-    const response = await orchestrator.handleEvent(event);
+  return tracer.startActiveSpan('orchestrator.handleEvent', async (childSpan) => {
+    try {
+      const response = await orchestrator.handleEvent(event);
+      
+      if (response) {
+        childSpan.end();
+        return res.status(200).json(response);
+      } else {
+        childSpan.end();
+        return res.status(200).json({ ok: true });
+      }
+    } catch (err: any) {
+      console.error('❌ Error handling event:', err);
+      
+      // Record error in trace
+      childSpan.recordException(err);
+      childSpan.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
+      childSpan.end();
 
-    if (response) {
-      return res.status(200).json(response);
-    } else {
-      return res.status(200).json({ ok: true });
+      const source = event.sender?.source != null ? String(event.sender.source) : undefined;
+      if (source == "telegram") {
+        res.status(200).json({ ok: false, error: err.message });
+      } else {
+        res.status(500).json({ ok: false, error: err.message });
+      }
     }
-  } catch (err: any) {
-    console.error('❌ Error handling event:', err);
-    const source = event.sender?.source != null ? String(event.sender.source) : undefined;
-    if (source == "telegram") {
-      res.status(200).json({ ok: false, error: err.message });
-    } else {
-      res.status(500).json({ ok: false, error: err.message });
-    }
-  }
+  });
 });
 
 
 app.use("/api/agents", requireApiKey, agentsRouter);
 
-app.get('/api/test-turso', requireApiKey, async (_req, res) => {
-  try {
-    const result = await tursoClient.testConnection();
-    res.status(200).json({
-      ok: true,
-      message: 'Turso connection OK',
-      result: result.rows,
-    });
-  } catch (err) {
-    console.error('❌ Turso test endpoint error:', err);
-    res.status(500).json({
-      ok: false,
-      message: 'Failed to connect to Turso',
-      error: err instanceof Error ? err.message : err,
-    });
-  }
-});
+// app.get('/api/test-turso', requireApiKey, async (_req, res) => {
+//   try {
+//     const result = await tursoClient.testConnection();
+//     res.status(200).json({
+//       ok: true,
+//       message: 'Turso connection OK',
+//       result: result.rows,
+//     });
+//   } catch (err) {
+//     console.error('❌ Turso test endpoint error:', err);
+//     res.status(500).json({
+//       ok: false,
+//       message: 'Failed to connect to Turso',
+//       error: err instanceof Error ? err.message : err,
+//     });
+//   }
+// });
 
 /**
  * Startup logic
