@@ -7,6 +7,10 @@ import { client as mongoClient } from './clients/mongodb.js';
 import agentsRouter from "./agents/index.js";
 import { trace, SpanStatusCode } from '@opentelemetry/api';
 import { configureOpentelemetry } from '@uptrace/node';
+import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
+import { HttpInstrumentation } from "@opentelemetry/instrumentation-http";
+import { FetchInstrumentation } from "@opentelemetry/instrumentation-fetch";
+import { registerInstrumentations } from "@opentelemetry/instrumentation";
 
 const IS_VERCEL = process.env.VERCEL === '1';
 const app = express();
@@ -14,6 +18,14 @@ const sdk = configureOpentelemetry({
   dsn: CONFIG.UPTRACE_DSN,
   serviceName: CONFIG.SPACE_ID,
   serviceVersion: '1.0.0',
+});
+
+registerInstrumentations({
+  instrumentations: [
+    new HttpInstrumentation(),
+    new FetchInstrumentation(),
+    ...getNodeAutoInstrumentations(),
+  ],
 });
 
 await sdk.start();
