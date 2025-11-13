@@ -138,12 +138,10 @@ export class LLMClient {
             throw lastError || new Error("LLM request failed after retries");
 
         } catch (err) {
-            // This catch block handles the final re-throw from the try block inside the span.
-            // It ensures any unhandled error is also recorded.
-            if (span.status.code !== SpanStatusCode.ERROR) {
-                span.recordException(err as Error);
-                span.setStatus({ code: SpanStatusCode.ERROR, message: (err as Error).message });
-            }
+            // ✅ FIX: Remove the conditional check that caused the TypeScript error.
+            // Unconditionally record and set status to ensure any error is captured.
+            span.recordException(err as Error);
+            span.setStatus({ code: SpanStatusCode.ERROR, message: (err as Error).message });
             throw err;
         } finally {
             span.end();
@@ -221,6 +219,7 @@ export class LLMClient {
         
             return message.content;
         } catch (err) {
+            // ✅ FIX: Remove the conditional check that caused the TypeScript error.
             span.recordException(err as Error);
             span.setStatus({ code: SpanStatusCode.ERROR, message: (err as Error).message });
             throw err;
@@ -284,6 +283,7 @@ export class LLMClient {
             span.setStatus({ code: SpanStatusCode.OK });
             return await response.json();
         } catch (err) {
+            // ✅ FIX: Remove the conditional check that caused the TypeScript error.
             span.recordException(err as Error);
             span.setStatus({ code: SpanStatusCode.ERROR, message: (err as Error).message });
             throw err;
