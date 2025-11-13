@@ -6,11 +6,13 @@ import { Orchestrator } from './orchestrator/index.js';
 import { client as mongoClient } from './clients/mongodb.js';
 import agentsRouter from "./agents/index.js";
 import { trace, SpanStatusCode } from '@opentelemetry/api';
-import { configureOpentelemetry } from '@uptrace/node';
-import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
-import { HttpInstrumentation } from "@opentelemetry/instrumentation-http";
-import { FetchInstrumentation } from "@opentelemetry/instrumentation-fetch";
-import { registerInstrumentations } from "@opentelemetry/instrumentation";
+import { configureOpentelemetry } from '@uptrace/node'
+import { registerInstrumentations } from '@opentelemetry/instrumentation'
+import { HttpInstrumentation } from '@opentelemetry/instrumentation-http'
+import { ExpressInstrumentation } from '@opentelemetry/instrumentation-express'
+import { FetchInstrumentation } from '@opentelemetry/instrumentation-fetch'
+import { MongoDBInstrumentation } from '@opentelemetry/instrumentation-mongodb'
+
 
 const IS_VERCEL = process.env.VERCEL === '1';
 const app = express();
@@ -23,12 +25,11 @@ const sdk = configureOpentelemetry({
 registerInstrumentations({
   instrumentations: [
     new HttpInstrumentation(),
+    new ExpressInstrumentation(),
     new FetchInstrumentation(),
-    ...getNodeAutoInstrumentations({
-      '@opentelemetry/instrumentation-openai': { enabled: false }, // 👈 Disable OpenAI
-    }),
+    new MongoDBInstrumentation(),
   ],
-});
+})
 
 await sdk.start();
 console.log(`✅ OpenTelemetry SDK started for ${CONFIG.SPACE_ID}`);
