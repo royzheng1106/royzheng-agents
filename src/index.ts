@@ -24,7 +24,9 @@ registerInstrumentations({
   instrumentations: [
     new HttpInstrumentation(),
     new FetchInstrumentation(),
-    ...getNodeAutoInstrumentations(),
+    ...getNodeAutoInstrumentations({
+      '@opentelemetry/instrumentation-openai': { enabled: false }, // 👈 Disable OpenAI
+    }),
   ],
 });
 
