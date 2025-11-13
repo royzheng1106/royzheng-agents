@@ -1,5 +1,10 @@
 import { CONFIG } from "../utils/config.js";
 import { getCurrentDateTimeSG } from "../utils/getCurrentDateTimeSG.js"; // 👈 import your util
+// --- ADDED TRACING IMPORTS ---
+import { trace, SpanStatusCode, Tracer } from '@opentelemetry/api';
+
+const tracer: Tracer = trace.getTracer('agents-service', '1.0.0');
+// ----------------------------
 
 
 /**
@@ -44,76 +49,108 @@ export class LLMClient {
       }>;
     }
   ): Promise<any> {
-    const nowString = getCurrentDateTimeSG();
-    const timeSystemMessage: SystemMessage = {
-      role: "system",
-      content: [
-        { type: "text", text: `Current time in Singapore: ${nowString}` }
-      ],
-    };
-
-    const conversationWithTime = [...conversation, timeSystemMessage];
-    const payload: Record<string, any> = { model, messages: conversationWithTime };
-
-    if (tools?.length) {
-      payload.tools = tools;
-      console.log(`[LLMClient] Including ${tools.length} tools`);
-    }
-
-    const maxRetries = 3;
-    let attempt = 0;
-    let lastError: Error | null = null;
-
-    while (attempt < maxRetries) {
-      attempt++;
-      try {
-        console.log(`[LLMClient] Attempt ${attempt}/${maxRetries} → sending request to ${this.baseUrl}/chat/completions`);
-
-        const response = await fetch(`${this.baseUrl}/chat/completions`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": "Bearer " + this.apiKey,
-          },
-          body: JSON.stringify(payload),
-        });
-
-        if (!response.ok) {
-          // If response status is bad, throw an Error with details
-          const errorDetail = `[LLMClient] Request failed: ${response.status} ${response.statusText}`;
-          // Try to get more detail from the response body if available (optional but helpful)
-          try {
-            const errorBody = await response.json();
-            throw new Error(`${errorDetail} - Body: ${JSON.stringify(errorBody)}`);
-          } catch {
-             // If JSON parsing fails, just throw the basic error
-            throw new Error(errorDetail);
-          }
+    // 🌟 SPAN for the chat completion operation
+    const result = await tracer.startActiveSpan('LLMClient.chatCompletion', {
+        attributes: {
+            'llm.model': model,
+            'llm.operation': 'chat_completion',
+            // Add tool count as an attribute if tools are present
+            ...(tools?.length && { 'llm.tool_count': tools.length }),
         }
+    }, async (span) => {
+        try {
+            const nowString = getCurrentDateTimeSG();
+            const timeSystemMessage: SystemMessage = {
+              role: "system",
+              content: [
+                { type: "text", text: `Current time in Singapore: ${nowString}` }
+              ],
+            };
+        
+            const conversationWithTime = [...conversation, timeSystemMessage];
+            const payload: Record<string, any> = { model, messages: conversationWithTime };
+        
+            if (tools?.length) {
+              payload.tools = tools;
+              console.log(`[LLMClient] Including ${tools.length} tools`);
+            }
+        
+            const maxRetries = 3;
+            let attempt = 0;
+            let lastError: Error | null = null;
+        
+            while (attempt < maxRetries) {
+              attempt++;
+              try {
+                console.log(`[LLMClient] Attempt ${attempt}/${maxRetries} → sending request to ${this.baseUrl}/chat/completions`);
+        
+                const response = await fetch(`${this.baseUrl}/chat/completions`, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer " + this.apiKey,
+                  },
+                  body: JSON.stringify(payload),
+                });
+        
+                if (!response.ok) {
+                  // If response status is bad, throw an Error with details
+                  const errorDetail = `[LLMClient] Request failed: ${response.status} ${response.statusText}`;
+                  // Try to get more detail from the response body if available (optional but helpful)
+                  try {
+                    const errorBody = await response.json();
+                    throw new Error(`${errorDetail} - Body: ${JSON.stringify(errorBody)}`);
+                  } catch {
+                     // If JSON parsing fails, just throw the basic error
+                    throw new Error(errorDetail);
+                  }
+                }
+        
+                const data = await response.json();
+        
+                // ✅ Verify response validity
+                if (!data?.choices?.length || !data.choices[0]?.message) {
+                  throw new Error(`[LLMClient] Invalid LLM response: ${JSON.stringify(data)}`);
+                }
+        
+                // ✅ Success → return result and set span status
+                span.setStatus({ code: SpanStatusCode.OK });
+                return data;
+        
+              } catch (err: any) {
+                lastError = err;
+                console.warn(`⚠️ [LLMClient] Attempt ${attempt} failed: ${err.message}`);
+        
+                // Exponential backoff delay before retry
+                const delayMs = 500 * Math.pow(2, attempt - 1);
+                await new Promise(res => setTimeout(res, delayMs));
+              }
+            }
+        
+            // ❌ After max retries, throw and set span status to error
+            console.error(`[LLMClient] All ${maxRetries} attempts failed.`);
+            
+            // Record the last failed attempt as the exception for the span
+            if (lastError) {
+                span.recordException(lastError);
+            }
+            span.setStatus({ code: SpanStatusCode.ERROR, message: lastError?.message || "LLM request failed after retries" });
+            throw lastError || new Error("LLM request failed after retries");
 
-        const data = await response.json();
-
-        // ✅ Verify response validity
-        if (!data?.choices?.length || !data.choices[0]?.message) {
-          throw new Error(`[LLMClient] Invalid LLM response: ${JSON.stringify(data)}`);
+        } catch (err) {
+            // This catch block handles the final re-throw from the try block inside the span.
+            // It ensures any unhandled error is also recorded.
+            if (span.status.code !== SpanStatusCode.ERROR) {
+                span.recordException(err as Error);
+                span.setStatus({ code: SpanStatusCode.ERROR, message: (err as Error).message });
+            }
+            throw err;
+        } finally {
+            span.end();
         }
+    });
 
-        // ✅ Success → return result
-        return data;
-
-      } catch (err: any) {
-        lastError = err;
-        console.warn(`⚠️ [LLMClient] Attempt ${attempt} failed: ${err.message}`);
-
-        // Exponential backoff delay before retry
-        const delayMs = 500 * Math.pow(2, attempt - 1);
-        await new Promise(res => setTimeout(res, delayMs));
-      }
-    }
-
-    // ❌ After max retries, throw
-    console.error(`[LLMClient] All ${maxRetries} attempts failed.`);
-    throw lastError || new Error("LLM request failed after retries");
+    return result;
   }
 
   /**
@@ -128,50 +165,71 @@ export class LLMClient {
     format: string = "ogg",
     model: string = "gemini-2.5-flash-lite"
   ): Promise<string> {
-    const payload = {
-      model,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: "Please provide a complete transcription of the speech in this audio clip."
-            },
-            {
-              type: "input_audio",
-              input_audio: {
-                data: audioData,
-                format
-              }
-            }
-          ]
+    // 🌟 SPAN for Speech-to-Text operation
+    const result = await tracer.startActiveSpan('LLMClient.audioToText', {
+        attributes: {
+            'llm.model': model,
+            'llm.operation': 'stt',
+            'audio.format': format,
         }
-      ]
-    };
+    }, async (span) => {
+        try {
+            const payload = {
+              model,
+              messages: [
+                {
+                  role: "user",
+                  content: [
+                    {
+                      type: "text",
+                      text: "Please provide a complete transcription of the speech in this audio clip."
+                    },
+                    {
+                      type: "input_audio",
+                      input_audio: {
+                        data: audioData,
+                        format
+                      }
+                    }
+                  ]
+                }
+              ]
+            };
+        
+            console.log(`[LLMClient] Sending audio for transcription to LiteLLM: ${model}`);
+        
+            const response = await fetch(`${this.baseUrl}/chat/completions`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer " + this.apiKey,
+              },
+              body: JSON.stringify(payload),
+            });
+        
+            if (!response.ok) {
+              throw new Error(`Audio transcription request failed: ${response.status} ${response.statusText}`);
+            }
+        
+            const data = await response.json();
+            const choice = data?.choices?.[0];
+            const message = choice?.message;
+        
+            span.setStatus({ code: SpanStatusCode.OK });
 
-    console.log(`[LLMClient] Sending audio for transcription to LiteLLM: ${model}`);
-
-    const response = await fetch(`${this.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer " + this.apiKey,
-      },
-      body: JSON.stringify(payload),
+            if (!message?.content) return "";
+        
+            return message.content;
+        } catch (err) {
+            span.recordException(err as Error);
+            span.setStatus({ code: SpanStatusCode.ERROR, message: (err as Error).message });
+            throw err;
+        } finally {
+            span.end();
+        }
     });
 
-    if (!response.ok) {
-      throw new Error(`Audio transcription request failed: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    const choice = data?.choices?.[0];
-    const message = choice?.message;
-
-    if (!message?.content) return "";
-
-    return message.content;
+    return result;
   }
 
   /**
@@ -188,39 +246,60 @@ export class LLMClient {
     voice: string = "Sulafat",
     format: string = "mp3"
   ): Promise<any> {
-    const payload = {
-      model,
-      messages: [
-        {
-          role: "user",
-          content: text
+    // 🌟 SPAN for Text-to-Speech operation
+    const result = await tracer.startActiveSpan('LLMClient.textToAudio', {
+        attributes: {
+            'llm.model': model,
+            'llm.operation': 'tts',
+            'audio.voice': voice,
+            'audio.format': format,
         }
-      ],
-      modalities: ["audio"],
-      audio: { voice, format }
-    };
-
-    const response = await fetch(`${this.baseUrl}/audio/speech`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer " + this.apiKey,
-      },
-      body: JSON.stringify(payload)
+    }, async (span) => {
+        try {
+            const payload = {
+              model,
+              messages: [
+                {
+                  role: "user",
+                  content: text
+                }
+              ],
+              modalities: ["audio"],
+              audio: { voice, format }
+            };
+        
+            const response = await fetch(`${this.baseUrl}/audio/speech`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer " + this.apiKey,
+              },
+              body: JSON.stringify(payload)
+            });
+        
+            if (!response.ok) {
+              throw new Error(`TTS request failed: ${response.status} ${response.statusText}`);
+            }
+        
+            span.setStatus({ code: SpanStatusCode.OK });
+            return await response.json();
+        } catch (err) {
+            span.recordException(err as Error);
+            span.setStatus({ code: SpanStatusCode.ERROR, message: (err as Error).message });
+            throw err;
+        } finally {
+            span.end();
+        }
     });
 
-    if (!response.ok) {
-      throw new Error(`TTS request failed: ${response.status} ${response.statusText}`);
-    }
-
-    return await response.json();
+    return result;
   }
 }
 
 
 
 /* -------------------------------------------------------------------------- */
-/*                              Type Definitions                              */
+/* Type Definitions                              */
 /* -------------------------------------------------------------------------- */
 
 /**
@@ -306,7 +385,7 @@ export interface InputAudio {
 }
 
 /* -------------------------------------------------------------------------- */
-/*                             Conversation Types                             */
+/* Conversation Types                             */
 /* -------------------------------------------------------------------------- */
 
 export type Message =
