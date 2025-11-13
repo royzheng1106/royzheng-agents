@@ -1,5 +1,3 @@
-import './utils/instrumentation.js';
-
 import express from 'express';
 import type { Event } from './models/Event.js';
 import { CONFIG } from './utils/config.js';
@@ -7,40 +5,43 @@ import { AgentFactory } from './agents/factory/index.js';
 import { Orchestrator } from './orchestrator/index.js';
 import { client as mongoClient } from './clients/mongodb.js';
 import agentsRouter from "./agents/index.js";
-import { tursoClient } from './clients/turso.js';
-import { trace, context, SpanStatusCode } from '@opentelemetry/api';
+import { trace, SpanStatusCode } from '@opentelemetry/api';
+import { configureOpentelemetry } from '@uptrace/node';
 
 const IS_VERCEL = process.env.VERCEL === '1';
-
 const app = express();
+const sdk = configureOpentelemetry({
+  dsn: CONFIG.UPTRACE_DSN,
+  serviceName: CONFIG.SPACE_ID,
+  serviceVersion: '1.0.0',
+});
+
+await sdk.start();
+console.log(`✅ OpenTelemetry SDK started for ${CONFIG.SPACE_ID}`);
+
+const tracer = trace.getTracer('agents-service', '1.0.0');
+console.log(tracer);
 
 // Increase request size limit to handle base64 audio
 app.use(express.json({ limit: "5mb" }));
 app.use(express.urlencoded({ limit: "5mb", extended: true }));
 
-
 // Middleware to validate API key
 function requireApiKey(req: express.Request, res: express.Response, next: express.NextFunction) {
-
   if (!IS_VERCEL) {
     console.log("Bypassing API Key check as it is not Vercel.");
     return next();
   }
 
-  // Normalize x-api-key
   let apiKey = Array.isArray(req.headers['x-api-key'])
     ? req.headers['x-api-key'][0]
     : req.headers['x-api-key'];
 
-  // If not present, check Authorization header
   if (!apiKey) {
-    let authHeader = Array.isArray(req.headers['authorization'])
+    const authHeader = Array.isArray(req.headers['authorization'])
       ? req.headers['authorization'][0]
       : req.headers['authorization'];
-
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      apiKey = authHeader.substring(7); // strip 'Bearer '
-    }
+    if (authHeader?.startsWith('Bearer ')) apiKey = authHeader.substring(7);
   }
 
   if (apiKey !== CONFIG.API_KEY) {
@@ -50,8 +51,6 @@ function requireApiKey(req: express.Request, res: express.Response, next: expres
   next();
 }
 
-const tracer = trace.getTracer('agents-service');
-
 // Health check
 app.get('/', (_req, res) => res.status(200).send('💻 royzheng-agents running'));
 app.get('/_health', (_req, res) => res.status(200).send('💻 royzheng-agents running'));
@@ -60,11 +59,7 @@ app.get('/_health', (_req, res) => res.status(200).send('💻 royzheng-agents ru
 const agentFactory = new AgentFactory();
 const orchestrator = new Orchestrator(agentFactory);
 
-/**
- * Validate incoming event payload.
- * - Must contain id, source, timestamp, payload
- * - Each recipient must have valid fields depending on channel
- */
+// Validate incoming event payload
 function validateEvent(event: Event): string | null {
   if (!event?.id || !event?.sender?.source || !event?.timestamp || !event?.messages) {
     return 'Invalid Event: missing id, source, timestamp, or messages';
@@ -73,98 +68,54 @@ function validateEvent(event: Event): string | null {
   if (event.recipients?.length) {
     for (const r of event.recipients) {
       if (!r.channel) return 'Recipient missing channel';
-
-      if (r.channel === 'telegram') {
-        if (!r.chat_id) return 'Telegram recipient must have chat_id';
-      } else if (!r.id) {
-        return `Recipient for channel "${r.channel}" must have id`;
-      }
+      if (r.channel === 'telegram' && !r.chat_id) return 'Telegram recipient must have chat_id';
+      if (r.channel !== 'telegram' && !r.id) return `Recipient for channel "${r.channel}" must have id`;
     }
   }
 
-  // No recipients is okay if you handle raw Response
   return null;
 }
 
 
-/**
- * Main events endpoint
- */
+// Main events endpoint
 app.post('/api/events', requireApiKey, async (req, res) => {
-  const currentSpan = trace.getActiveSpan();
-
-  // 🚨 ADD THIS CHECK:
-  if (!currentSpan) {
-    console.error("❌ OTel WARNING: No active span found. Instrumentation failure or context is lost.");
-  } else {
-    const traceId = currentSpan.spanContext().traceId;
-    console.log(`🟢 OTel DEBUG: Root HTTP Span found. Trace ID: ${traceId}.`);
-    currentSpan.setAttribute("event.id", req.body?.id || "N/A");
-    currentSpan.setAttribute("event.source", req.body?.sender?.source || "unknown");
-  }
   const event: Event = req.body;
 
-  const validationError = validateEvent(event);
-  if (validationError) {
-    currentSpan?.recordException(new Error(validationError));
-    currentSpan?.setStatus({ code: SpanStatusCode.ERROR, message: validationError });
-    return res.status(400).json({ ok: false, error: validationError });
-  }
-  if (currentSpan) {
-    currentSpan.setAttribute("event.id", event.id);
-    currentSpan.setAttribute("event.source", event.sender?.source || "unknown");
-  }
-  console.log(`📩 Received event: ${JSON.stringify(event)}`);
-
-  return tracer.startActiveSpan('orchestrator.handleEvent', async (childSpan) => {
+  // Start a manual HTTP span for this request
+  return tracer.startActiveSpan('http.request', async (span) => {
     try {
-      const response = await orchestrator.handleEvent(event);
-      
-      if (response) {
-        childSpan.end();
-        return res.status(200).json(response);
-      } else {
-        childSpan.end();
-        return res.status(200).json({ ok: true });
-      }
-    } catch (err: any) {
-      console.error('❌ Error handling event:', err);
-      
-      // Record error in trace
-      childSpan.recordException(err);
-      childSpan.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
-      childSpan.end();
+      const validationError = validateEvent(event);
 
-      const source = event.sender?.source != null ? String(event.sender.source) : undefined;
-      if (source == "telegram") {
-        res.status(200).json({ ok: false, error: err.message });
-      } else {
-        res.status(500).json({ ok: false, error: err.message });
+      // Add event attributes to the span
+      span.setAttribute('event.id', event.id);
+      span.setAttribute('event.source', event.sender?.source || 'unknown');
+      console.log(span);
+      if (validationError) {
+        span.recordException(new Error(validationError));
+        span.setStatus({ code: SpanStatusCode.ERROR, message: validationError });
+        span.end();
+        console.log(span);
+        return res.status(400).json({ ok: false, error: validationError });
       }
+
+      // Process the event
+      const response = await orchestrator.handleEvent(event);
+
+      span.end();
+      return res.status(200).json(response || { ok: true });
+    } catch (err: any) {
+      // Record any errors on the span
+      span.recordException(err);
+      span.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
+      span.end();
+      return res.status(500).json({ ok: false, error: err.message });
     }
   });
 });
 
 
+// Agents router
 app.use("/api/agents", requireApiKey, agentsRouter);
-
-// app.get('/api/test-turso', requireApiKey, async (_req, res) => {
-//   try {
-//     const result = await tursoClient.testConnection();
-//     res.status(200).json({
-//       ok: true,
-//       message: 'Turso connection OK',
-//       result: result.rows,
-//     });
-//   } catch (err) {
-//     console.error('❌ Turso test endpoint error:', err);
-//     res.status(500).json({
-//       ok: false,
-//       message: 'Failed to connect to Turso',
-//       error: err instanceof Error ? err.message : err,
-//     });
-//   }
-// });
 
 /**
  * Startup logic

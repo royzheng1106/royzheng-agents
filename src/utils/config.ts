@@ -43,5 +43,7 @@ export const CONFIG = {
   TURSO_AUTH_TOKEN: getEnv("TURSO_AUTH_TOKEN"),
   MCP_API_KEY: getEnv("MCP_API_KEY"),
   GRAPHITI_API_KEY: getEnv("GRAPHITI_API_KEY"),
-  RMQ_API_KEY: getEnv("RMQ_API_KEY")
+  RMQ_API_KEY: getEnv("RMQ_API_KEY"),
+  UPTRACE_DSN: getEnv("UPTRACE_DSN"),
+  SPACE_ID: getEnv("SPACE_ID")
 };
