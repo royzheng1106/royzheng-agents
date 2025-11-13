@@ -1,9 +1,13 @@
+import { trace, SpanStatusCode, Tracer } from '@opentelemetry/api';
+
+const tracer: Tracer = trace.getTracer('agents-service', '1.0.0');
+
 /**
  * src/client/mcp.ts
  *
  * A lightweight MCP client that can:
- *  - List tools (`tools/list`)
- *  - Call a tool (`tools/call`)
+ * - List tools (`tools/list`)
+ * - Call a tool (`tools/call`)
  */
 
 export interface MCPTool {
@@ -104,8 +108,22 @@ export class MCPClient {
 
     /** Fetch the list of available tools from the MCP server, cleaned for LLM use */
     async listTools(): Promise<Array<{ name: string; description: string; parameters: Record<string, any> }>> {
-        const data = await this.request<MCPListToolsResponse>('tools/list');
-        console.log(data);
+        // 🌟 SPAN for fetching all tools
+        const data = await tracer.startActiveSpan('MCPClient.listTools', async (span) => {
+            try {
+                const data = await this.request<MCPListToolsResponse>('tools/list');
+                console.log(data);
+                span.setStatus({ code: SpanStatusCode.OK });
+                return data;
+            } catch (err) {
+                span.recordException(err as Error);
+                span.setStatus({ code: SpanStatusCode.ERROR, message: (err as Error).message });
+                throw err;
+            } finally {
+                span.end();
+            }
+        });
+
         return data.result.tools.map(tool => {
             const { additionalProperties, $schema, ...cleanedParameters } = tool.inputSchema;
             return {
@@ -119,9 +137,48 @@ export class MCPClient {
 
     /** Call a specific MCP tool with optional arguments */
     async callTool(params: MCPCallToolParams): Promise<any> {
-        console.log(`In Call Tool`);
-        const data = await this.request<MCPCallToolResponse>('tools/call', params);
-        console.log(`Tool Results: ${data}`);
-        return data.result;
+        const { name, arguments: argsRaw } = params;
+        
+        // 🌟 SPAN for each Tool Call
+        const result = await tracer.startActiveSpan('MCPClient.callTool', {
+            attributes: {
+                'tool.name': name,
+                // Only add arguments if they exist
+                ...(argsRaw && { 'tool.arguments': JSON.stringify(argsRaw) }),
+            }
+        }, async (span) => {
+            try {
+                console.log(`In Call Tool`);
+                const data = await this.request<MCPCallToolResponse>('tools/call', params);
+                console.log(`Tool Results: ${data}`);
+
+                if (data.error) {
+                    // Functional error from the tool itself. Record exception and THROW.
+                    const error = new Error(`MCP Tool '${name}' failed: ${data.error.message}`);
+                    
+                    // ✅ FIX: Use span.setAttributes() before recordException to avoid TS type error
+                    span.setAttributes({
+                        'error.code': data.error.code,
+                        'error.data': JSON.stringify(data.error.data)
+                    });
+                    span.recordException(error); 
+                    
+                    span.setStatus({ code: SpanStatusCode.ERROR, message: data.error.message });
+                    throw error;
+                }
+
+                span.setStatus({ code: SpanStatusCode.OK });
+                return data.result;
+            } catch (err) {
+                // Catches request errors OR the thrown data.error
+                span.recordException(err as Error);
+                // Ensure status is set to ERROR for all errors before re-throwing
+                span.setStatus({ code: SpanStatusCode.ERROR, message: (err as Error).message });
+                throw err; // Re-throw so Orchestrator can catch
+            } finally {
+                span.end();
+            }
+        });
+        return result;
     }
 }
