@@ -5,40 +5,13 @@ import { AgentFactory } from './agents/factory/index.js';
 import { Orchestrator } from './orchestrator/index.js';
 import { client as mongoClient } from './clients/mongodb.js';
 import agentsRouter from "./agents/index.js";
-import { trace, SpanStatusCode } from '@opentelemetry/api';
-import { configureOpentelemetry } from '@uptrace/node'
-import { registerInstrumentations } from '@opentelemetry/instrumentation'
-import { HttpInstrumentation } from '@opentelemetry/instrumentation-http'
-import { ExpressInstrumentation } from '@opentelemetry/instrumentation-express'
-import { FetchInstrumentation } from '@opentelemetry/instrumentation-fetch'
-import { MongoDBInstrumentation } from '@opentelemetry/instrumentation-mongodb'
-
+import { setupOpenTelemetry, SpanStatusCode } from './utils/openTelemetry.js'; // Use the new file
 
 const IS_VERCEL = process.env.VERCEL === '1';
 const app = express();
-const sdk = configureOpentelemetry({
-  dsn: CONFIG.UPTRACE_DSN,
-  serviceName: CONFIG.SPACE_ID,
-  serviceVersion: '1.0.0',
-});
+const tracer = await setupOpenTelemetry();
+console.log(`Tracer: ${tracer}`);
 
-registerInstrumentations({
-  instrumentations: [
-    new HttpInstrumentation(),
-    new ExpressInstrumentation(),new FetchInstrumentation({
-      propagateTraceHeaderCorsUrls: /.*/,
-    }),new FetchInstrumentation(),
-    new MongoDBInstrumentation(),
-  ],
-})
-
-await sdk.start();
-console.log(`✅ OpenTelemetry SDK started for ${CONFIG.SPACE_ID}`);
-
-const tracer = trace.getTracer('agents-service', '1.0.0');
-console.log(tracer);
-
-// Increase request size limit to handle base64 audio
 app.use(express.json({ limit: "5mb" }));
 app.use(express.urlencoded({ limit: "5mb", extended: true }));
 
@@ -129,17 +102,12 @@ app.post('/api/events', requireApiKey, async (req, res) => {
   });
 });
 
-
-// Agents router
 app.use("/api/agents", requireApiKey, agentsRouter);
 
-/**
- * Startup logic
- */
 async function startServer() {
   try {
     await mongoClient.connect();
-    console.log('✅ Connected to MongoDB Atlas');
+    console.log('Connected to MongoDB Atlas');
 
     if (!CONFIG.IS_VERCEL) {
       app.listen(CONFIG.PORT, () => {
