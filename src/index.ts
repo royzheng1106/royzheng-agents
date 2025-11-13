@@ -92,6 +92,16 @@ function validateEvent(event: Event): string | null {
  */
 app.post('/api/events', requireApiKey, async (req, res) => {
   const currentSpan = trace.getActiveSpan();
+
+  // 🚨 ADD THIS CHECK:
+  if (!currentSpan) {
+    console.error("❌ OTel WARNING: No active span found. Instrumentation failure or context is lost.");
+  } else {
+    const traceId = currentSpan.spanContext().traceId;
+    console.log(`🟢 OTel DEBUG: Root HTTP Span found. Trace ID: ${traceId}.`);
+    currentSpan.setAttribute("event.id", req.body?.id || "N/A");
+    currentSpan.setAttribute("event.source", req.body?.sender?.source || "unknown");
+  }
   const event: Event = req.body;
 
   const validationError = validateEvent(event);
