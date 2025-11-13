@@ -25,8 +25,9 @@ const sdk = configureOpentelemetry({
 registerInstrumentations({
   instrumentations: [
     new HttpInstrumentation(),
-    new ExpressInstrumentation(),
-    new FetchInstrumentation(),
+    new ExpressInstrumentation(),new FetchInstrumentation({
+      propagateTraceHeaderCorsUrls: /.*/,
+    }),new FetchInstrumentation(),
     new MongoDBInstrumentation(),
   ],
 })
