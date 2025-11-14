@@ -7,14 +7,13 @@ import { HttpInstrumentation } from '@opentelemetry/instrumentation-http'
 import { ExpressInstrumentation } from '@opentelemetry/instrumentation-express'
 import { FetchInstrumentation } from '@opentelemetry/instrumentation-fetch'
 import { MongoDBInstrumentation } from '@opentelemetry/instrumentation-mongodb'
-import { CONFIG } from './config.js'; // Assuming CONFIG is available here
+import { CONFIG } from './config.js';
 
 /**
  * Configures and starts the OpenTelemetry SDK.
  * @returns The OpenTelemetry Tracer instance.
  */
 export async function setupOpenTelemetry(): Promise<Tracer> {
-  // Use the configuration from the original file
   const sdk = configureOpentelemetry({
     dsn: CONFIG.UPTRACE_DSN,
     serviceName: CONFIG.SPACE_ID,
@@ -28,9 +27,6 @@ export async function setupOpenTelemetry(): Promise<Tracer> {
       new FetchInstrumentation({
         propagateTraceHeaderCorsUrls: /.*/,
       }),
-      // The original code had two FetchInstrumentation instances,
-      // which is likely unnecessary. I'll include the one with the config.
-      // If the second one is needed for a specific reason, you can re-add it.
       new MongoDBInstrumentation(),
     ],
   });
@@ -43,5 +39,4 @@ export async function setupOpenTelemetry(): Promise<Tracer> {
   return tracer;
 }
 
-// Optionally, you might want to export SpanStatusCode if you use it often.
 export { SpanStatusCode };

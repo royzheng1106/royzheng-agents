@@ -140,7 +140,7 @@ export class MCPClient {
         const { name, arguments: argsRaw } = params;
         
         // 🌟 SPAN for each Tool Call
-        const result = await tracer.startActiveSpan('MCPClient.callTool', {
+        const result = await tracer.startActiveSpan(`MCPClient.callTool (${name})`, {
             attributes: {
                 'tool.name': name,
                 // Only add arguments if they exist
