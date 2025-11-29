@@ -1,5 +1,5 @@
 ---
-title: Agents
+title: RZ Agents
 emoji: 🧠
 colorFrom: blue
 colorTo: purple
